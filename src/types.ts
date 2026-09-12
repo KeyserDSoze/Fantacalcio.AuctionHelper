@@ -1,6 +1,7 @@
 export type Role = "P" | "D" | "C" | "A";
 export type PersonalRating = "LIKE" | "NEUTRAL" | "AVOID";
 export type PriorityTier = 1 | 2 | 3 | null;
+export type GoalkeeperMode = "INDIVIDUAL" | "PACKAGE";
 export type PsychologyProfile =
   | "UNKNOWN"
   | "RATIONAL"
@@ -46,6 +47,10 @@ export interface Purchase {
   playerId: string;
   fantasyTeamId: string;
   price: number;
+  /** Crediti realmente sottratti. Nei pacchetti portieri vale il prezzo sul primo record e 0 sugli altri. */
+  budgetImpact?: number;
+  bundleId?: string;
+  bundleLabel?: string;
   role: Role;
   choiceNumber: number;
   subRound: number;
@@ -70,6 +75,8 @@ export interface AuctionState {
   choiceNumber: number;
   subRound: number;
   resolvedTeamIds: string[];
+  goalkeeperMode: GoalkeeperMode;
+  closedAt: number | null;
 }
 
 export interface AppSnapshot {
