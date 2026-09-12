@@ -2,6 +2,7 @@ import { openDB, type DBSchema } from "idb";
 import type { AuctionState, FantasyTeam, ObservedBid, Player, Purchase, SerieAClub } from "@/types";
 import { DEFAULT_AUCTION, DEFAULT_TEAMS } from "@/lib/defaults";
 import { buildDefaultCatalog } from "@/data/defaultCatalog";
+import { fillMissingClubTiers } from "@/lib/clubTiers";
 
 interface AuctionDB extends DBSchema {
   players: {
@@ -72,13 +73,14 @@ export async function getDb() {
 
   if ((await db.count("players")) === 0) {
     const defaults = buildDefaultCatalog();
+    const autoTieredClubs = fillMissingClubTiers(defaults.players, defaults.clubs);
     const existingClubs = await db.getAll("clubs");
     const existingClubMap = new Map(existingClubs.map((club) => [club.id, club]));
     const tx = db.transaction(["players", "clubs"], "readwrite");
     for (const player of defaults.players) await tx.objectStore("players").put(player);
-    for (const club of defaults.clubs) {
+    for (const club of autoTieredClubs) {
       const existing = existingClubMap.get(club.id);
-      await tx.objectStore("clubs").put(existing ? { ...club, tier: existing.tier } : club);
+      await tx.objectStore("clubs").put(existing?.tier != null ? { ...club, tier: existing.tier } : club);
     }
     await tx.done;
   }
@@ -89,7 +91,7 @@ export async function getDb() {
 
 export async function loadAll() {
   const db = await getDb();
-  const [players, clubs, teams, purchases, bids, rawAuction] = await Promise.all([
+  const [players, rawClubs, teams, purchases, bids, rawAuction] = await Promise.all([
     db.getAll("players"),
     db.getAll("clubs"),
     db.getAll("teams"),
@@ -97,6 +99,15 @@ export async function loadAll() {
     db.getAll("bids"),
     db.get("state", "auction"),
   ]);
+
+  const clubs = fillMissingClubTiers(players, rawClubs);
+  const changedClubs = clubs.filter((club, index) => club.tier !== rawClubs[index]?.tier);
+  if (changedClubs.length) {
+    const tx = db.transaction("clubs", "readwrite");
+    for (const club of changedClubs) await tx.store.put(club);
+    await tx.done;
+  }
+
   const auction = normalizeAuction(rawAuction);
   if (rawAuction && (rawAuction.goalkeeperMode === undefined || rawAuction.closedAt === undefined)) await db.put("state", auction);
   return { players, clubs, teams, purchases, bids, auction };
@@ -129,11 +140,12 @@ export async function saveAuctionState(state: AuctionState) {
 
 export async function replacePlayerCatalog(players: Player[], clubs: SerieAClub[]) {
   const db = await getDb();
+  const tieredClubs = fillMissingClubTiers(players, clubs);
   const tx = db.transaction(["players", "clubs"], "readwrite");
   await tx.objectStore("players").clear();
   await tx.objectStore("clubs").clear();
   for (const player of players) await tx.objectStore("players").put(player);
-  for (const club of clubs) await tx.objectStore("clubs").put(club);
+  for (const club of tieredClubs) await tx.objectStore("clubs").put(club);
   await tx.done;
 }
 
@@ -203,7 +215,8 @@ export async function importDatabase(snapshot: Awaited<ReturnType<typeof loadAll
     tx.objectStore("state").clear(),
   ]);
   for (const item of snapshot.players) await tx.objectStore("players").put(item);
-  for (const item of snapshot.clubs) await tx.objectStore("clubs").put(item);
+  const tieredClubs = fillMissingClubTiers(snapshot.players, snapshot.clubs);
+  for (const item of tieredClubs) await tx.objectStore("clubs").put(item);
   for (const item of snapshot.teams) await tx.objectStore("teams").put(item);
   for (const item of snapshot.purchases) await tx.objectStore("purchases").put(item);
   for (const item of snapshot.bids ?? []) await tx.objectStore("bids").put(item);
