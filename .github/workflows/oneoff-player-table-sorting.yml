@@ -1,0 +1,67 @@
+name: One-off player table sorting
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/oneoff-player-table-sorting.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Add sortable player catalog
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/pages/PlayersPage.tsx')
+          text = path.read_text()
+
+          text = text.replace(
+            'import { Heart, Search, Sparkles, Upload, XCircle } from "lucide-react";',
+            'import { ArrowDown, ArrowUp, ArrowUpDown, Heart, Search, Sparkles, Upload, XCircle } from "lucide-react";'
+          )
+
+          anchor = 'import { MAX_GOALKEEPERS_PER_PACKAGE, MIN_GOALKEEPERS_PER_PACKAGE } from "@/lib/strategy";\n\n'
+          types = '''import { MAX_GOALKEEPERS_PER_PACKAGE, MIN_GOALKEEPERS_PER_PACKAGE } from "@/lib/strategy";\n\ntype SortKey = "name" | "role" | "basePrice" | "club" | "priorityTier" | "targetChoice" | "status";\ntype SortDirection = "asc" | "desc";\n\nconst SORT_LABELS: Record<SortKey, string> = {\n  name: "Giocatore",\n  role: "Ruolo",\n  basePrice: "Quota",\n  club: "Squadra",\n  priorityTier: "Mio tier",\n  targetChoice: "Scelta",\n  status: "Stato",\n};\n\nconst ROLE_ORDER: Record<Role, number> = { P: 0, D: 1, C: 2, A: 3 };\n\n'''
+          if anchor not in text:
+            raise SystemExit('strategy import anchor missing')
+          text = text.replace(anchor, types, 1)
+
+          old_state = '''  const [role, setRole] = useState<"ALL" | Role>("ALL");\n  const [page, setPage] = useState(0);\n  const [message, setMessage] = useState("");\n  const pageSize = 50;\n  const filtered = useMemo(() => data.players.filter((p) => (role === "ALL" || p.role === role) && `${p.name} ${p.club}`.toLowerCase().includes(query.toLowerCase())).sort((a,b) => a.name.localeCompare(b.name,"it")), [data.players, query, role]);\n  const paged = filtered.slice(page * pageSize, page * pageSize + pageSize);\n'''
+          new_state = '''  const [role, setRole] = useState<"ALL" | Role>("ALL");\n  const [sortKey, setSortKey] = useState<SortKey>("name");\n  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");\n  const [page, setPage] = useState(0);\n  const [message, setMessage] = useState("");\n  const pageSize = 50;\n  const filtered = useMemo(() => {\n    const visible = data.players.filter((player) =>\n      (role === "ALL" || player.role === role) &&\n      `${player.name} ${player.club}`.toLowerCase().includes(query.toLowerCase())\n    );\n    const direction = sortDirection === "asc" ? 1 : -1;\n    return [...visible].sort((a, b) => {\n      let comparison = 0;\n      switch (sortKey) {\n        case "name": comparison = a.name.localeCompare(b.name, "it"); break;\n        case "role": comparison = ROLE_ORDER[a.role] - ROLE_ORDER[b.role]; break;\n        case "basePrice": comparison = a.basePrice - b.basePrice; break;\n        case "club": comparison = a.club.localeCompare(b.club, "it"); break;\n        case "priorityTier": comparison = (a.priorityTier ?? 99) - (b.priorityTier ?? 99); break;\n        case "targetChoice": comparison = (a.targetChoice ?? 99) - (b.targetChoice ?? 99); break;\n        case "status": comparison = a.status.localeCompare(b.status); break;\n      }\n      if (comparison === 0) comparison = a.name.localeCompare(b.name, "it");\n      return comparison * direction;\n    });\n  }, [data.players, query, role, sortKey, sortDirection]);\n  const paged = filtered.slice(page * pageSize, page * pageSize + pageSize);\n\n  const changeSort = (key: SortKey) => {\n    setPage(0);\n    if (sortKey === key) {\n      setSortDirection((current) => current === "asc" ? "desc" : "asc");\n      return;\n    }\n    setSortKey(key);\n    setSortDirection(key === "basePrice" ? "desc" : "asc");\n  };\n\n  const sortIcon = (key: SortKey) => sortKey !== key\n    ? <ArrowUpDown className="h-3.5 w-3.5 opacity-50" />\n    : sortDirection === "asc"\n      ? <ArrowUp className="h-3.5 w-3.5" />\n      : <ArrowDown className="h-3.5 w-3.5" />;\n'''
+          if old_state not in text:
+            raise SystemExit('state block missing')
+          text = text.replace(old_state, new_state, 1)
+
+          old_filters = '''      <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_auto]"><div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Cerca nome o squadra…" value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} /></div><Select className="w-full sm:w-auto" value={role} onChange={(e) => { setRole(e.target.value as typeof role); setPage(0); }}><option value="ALL">Tutti i ruoli</option>{(["P","D","C","A"] as Role[]).map((r) => <option value={r} key={r}>{ROLE_LABELS[r]}</option>)}</Select></div>\n'''
+          new_filters = '''      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_auto_auto_auto]"><div className="relative sm:col-span-2 xl:col-span-1"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Cerca nome o squadra…" value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} /></div><Select className="w-full" value={role} onChange={(e) => { setRole(e.target.value as typeof role); setPage(0); }}><option value="ALL">Tutti i ruoli</option>{(["P","D","C","A"] as Role[]).map((r) => <option value={r} key={r}>{ROLE_LABELS[r]}</option>)}</Select><Select className="w-full md:hidden" value={sortKey} onChange={(e) => { setSortKey(e.target.value as SortKey); setSortDirection(e.target.value === "basePrice" ? "desc" : "asc"); setPage(0); }}>{(Object.keys(SORT_LABELS) as SortKey[]).map((key) => <option key={key} value={key}>Ordina: {SORT_LABELS[key]}</option>)}</Select><Select className="w-full md:hidden" value={sortDirection} onChange={(e) => { setSortDirection(e.target.value as SortDirection); setPage(0); }}><option value="asc">Crescente</option><option value="desc">Decrescente</option></Select></div>\n'''
+          if old_filters not in text:
+            raise SystemExit('filter block missing')
+          text = text.replace(old_filters, new_filters, 1)
+
+          old_header = '''      <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[1000px] text-sm"><thead className="text-left text-xs uppercase text-muted-foreground"><tr><th className="pb-3">Giocatore</th><th>Ruolo</th><th>Quota</th><th>Squadra</th><th>Gradimento</th><th>Mio tier</th><th>Scelta pianificata</th><th>Stato</th></tr></thead><tbody>\n'''
+          new_header = '''      <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[1000px] text-sm"><thead className="text-left text-xs uppercase text-muted-foreground"><tr><th className="pb-3"><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("name")}>Giocatore{sortIcon("name")}</button></th><th><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("role")}>Ruolo{sortIcon("role")}</button></th><th><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("basePrice")}>Quota{sortIcon("basePrice")}</button></th><th><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("club")}>Squadra{sortIcon("club")}</button></th><th>Gradimento</th><th><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("priorityTier")}>Mio tier{sortIcon("priorityTier")}</button></th><th><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("targetChoice")}>Scelta pianificata{sortIcon("targetChoice")}</button></th><th><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("status")}>Stato{sortIcon("status")}</button></th></tr></thead><tbody>\n'''
+          if old_header not in text:
+            raise SystemExit('table header missing')
+          text = text.replace(old_header, new_header, 1)
+
+          path.write_text(text)
+
+      - name: Commit source change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/PlayersPage.tsx
+          git commit -m "feat: add sortable player catalog"
+          git push
