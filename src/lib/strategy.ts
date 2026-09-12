@@ -25,15 +25,34 @@ function seededNoise(value: string) {
   return ((hash >>> 0) % 1000) / 1000;
 }
 
-function percentile(player: Player, pool: Player[]) {
+function auctionPool(players: Player[], auction: AuctionState) {
+  const available = players.filter((player) => player.status === "AVAILABLE" && player.role === auction.currentRole);
+  if (auction.currentRole !== "P" || auction.goalkeeperMode !== "PACKAGE") return available;
+  const byClub = new Map<string, Player[]>();
+  available.forEach((player) => byClub.set(player.club, [...(byClub.get(player.club) ?? []), player]));
+  return [...byClub.values()]
+    .filter((group) => group.length >= 3)
+    .map((group) => [...group].sort((a, b) => b.basePrice - a.basePrice)[0]);
+}
+
+function effectiveBasePrice(player: Player, allPlayers: Player[], auction: AuctionState) {
+  if (auction.currentRole !== "P" || auction.goalkeeperMode !== "PACKAGE") return player.basePrice;
+  return allPlayers
+    .filter((item) => item.status === "AVAILABLE" && item.role === "P" && item.club === player.club)
+    .sort((a, b) => b.basePrice - a.basePrice)
+    .slice(0, 3)
+    .reduce((sum, item) => sum + item.basePrice, 0);
+}
+
+function percentile(player: Player, pool: Player[], allPlayers: Player[], auction: AuctionState) {
   if (pool.length <= 1) return 1;
-  const sorted = [...pool].sort((a, b) => a.basePrice - b.basePrice);
-  const index = sorted.findIndex((p) => p.id === player.id);
+  const sorted = [...pool].sort((a, b) => effectiveBasePrice(a, allPlayers, auction) - effectiveBasePrice(b, allPlayers, auction));
+  const index = sorted.findIndex((item) => item.id === player.id);
   return clamp(index / (sorted.length - 1));
 }
 
 function clubPower(player: Player, clubs: SerieAClub[]) {
-  const tier = clubs.find((c) => c.name === player.club)?.tier;
+  const tier = clubs.find((club) => club.name === player.club)?.tier;
   if (!tier) return 0.55;
   return clamp(1.1 - tier * 0.18, 0.18, 1);
 }
@@ -63,22 +82,23 @@ function rawOpponentScore(
 ) {
   const remaining = getRemainingBudget(team, purchases);
   const reserve = minimumCompletionCost(team.id, allPlayers, purchases);
-  if (remaining < player.basePrice || missingByRole(team.id, player.role, purchases) <= 0) return 0;
+  const targetPrice = effectiveBasePrice(player, allPlayers, auction);
+  if (remaining < targetPrice || missingByRole(team.id, player.role, purchases) <= 0) return 0;
 
-  const qualityP = percentile(player, pool);
+  const qualityP = percentile(player, pool, allPlayers, auction);
   const clubP = clubPower(player, clubs);
   const quality = qualityP * 0.72 + clubP * 0.28;
-  const maxPrice = Math.max(...pool.map((p) => p.basePrice), 1);
-  const cheapness = 1 - player.basePrice / maxPrice;
+  const maxPrice = Math.max(...pool.map((item) => effectiveBasePrice(item, allPlayers, auction)), 1);
+  const cheapness = 1 - targetPrice / maxPrice;
   const fandom = team.supportedClubs.includes(player.club) ? 1 : 0;
-  const maxChoice = ROLE_LIMITS[auction.currentRole];
+  const maxChoice = auction.currentRole === "P" && auction.goalkeeperMode === "PACKAGE" ? 1 : ROLE_LIMITS[auction.currentRole];
   const desiredQuality = 1 - ((auction.choiceNumber - 1) / Math.max(1, maxChoice - 1)) * 0.78;
   const stageFit = 1 - Math.abs(quality - desiredQuality);
   const noise = seededNoise(`${team.id}-${player.id}-${auction.choiceNumber}-${auction.subRound}`);
   const psychology = profileScore(team.profile, quality, cheapness, fandom, noise);
   const learned = observedBehavior(team, allPlayers, purchases, bids);
   const freeBudget = Math.max(0, remaining - reserve);
-  const budgetHeadroom = clamp((freeBudget + player.basePrice) / Math.max(player.basePrice * 2.2, 1), 0.15, 1);
+  const budgetHeadroom = clamp((freeBudget + targetPrice) / Math.max(targetPrice * 2.2, 1), 0.15, 1);
   const liveBehavior = clamp((learned.multiplier - 0.7) / 0.8, 0, 1);
 
   return clamp(psychology * 0.43 + stageFit * 0.24 + budgetHeadroom * 0.13 + fandom * 0.05 + liveBehavior * 0.15, 0, 1.35);
@@ -86,9 +106,7 @@ function rawOpponentScore(
 
 export function activeTeamsForState(teams: FantasyTeam[], purchases: Purchase[], auction: AuctionState) {
   return teams.filter(
-    (team) =>
-      !auction.resolvedTeamIds.includes(team.id) &&
-      missingByRole(team.id, auction.currentRole, purchases) > 0,
+    (team) => !auction.resolvedTeamIds.includes(team.id) && missingByRole(team.id, auction.currentRole, purchases) > 0,
   );
 }
 
@@ -100,21 +118,21 @@ export function predictOpponentTargets(
   auction: AuctionState,
   bids: ObservedBid[] = [],
 ) {
-  const pool = players.filter((p) => p.status === "AVAILABLE" && p.role === auction.currentRole);
-  const active = activeTeamsForState(teams, purchases, auction).filter((t) => !t.isMe);
+  const pool = auctionPool(players, auction);
+  const active = activeTeamsForState(teams, purchases, auction).filter((team) => !team.isMe);
   const result = new Map<string, OpponentTarget[]>();
 
   active.forEach((team) => {
     const scored = pool
       .map((player) => ({ player, score: rawOpponentScore(team, player, pool, players, clubs, purchases, bids, auction) }))
-      .filter((x) => x.score > 0)
+      .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 14);
-    const weights = scored.map((x) => Math.exp(x.score * 5.2));
+    const weights = scored.map((item) => Math.exp(item.score * 5.2));
     const total = weights.reduce((a, b) => a + b, 0) || 1;
     result.set(
       team.id,
-      scored.map((x, i) => ({ teamId: team.id, playerId: x.player.id, score: x.score, probability: weights[i] / total })),
+      scored.map((item, index) => ({ teamId: team.id, playerId: item.player.id, score: item.score, probability: weights[index] / total })),
     );
   });
   return result;
@@ -128,9 +146,9 @@ export function getSozeCandidates(
   auction: AuctionState,
   bids: ObservedBid[] = [],
 ) {
-  const pool = players.filter((p) => p.status === "AVAILABLE" && p.role === auction.currentRole);
+  const pool = auctionPool(players, auction);
   const predictions = predictOpponentTargets(teams, players, clubs, purchases, auction, bids);
-  const activeOpponents = activeTeamsForState(teams, purchases, auction).filter((t) => !t.isMe);
+  const activeOpponents = activeTeamsForState(teams, purchases, auction).filter((team) => !team.isMe);
 
   return pool
     .filter((player) => {
@@ -139,20 +157,16 @@ export function getSozeCandidates(
       return player.priorityTier !== null && player.priorityTier <= Math.min(3, auction.choiceNumber);
     })
     .map<CandidateAdvice>((player) => {
-      const quality = percentile(player, pool) * 0.74 + clubPower(player, clubs) * 0.26;
+      const quality = percentile(player, pool, players, auction) * 0.74 + clubPower(player, clubs) * 0.26;
       const tierValue = player.priorityTier ? ({ 1: 1, 2: 0.78, 3: 0.58 } as const)[player.priorityTier] : 0.5;
       const like = player.personalRating === "LIKE" ? 1 : 0.45;
       const rolledOver = player.targetChoice !== null && player.targetChoice < auction.choiceNumber;
       const rolloverBonus = rolledOver ? Math.min(0.16, (auction.choiceNumber - (player.targetChoice ?? auction.choiceNumber)) * 0.055) : 0;
-
       const contenders = activeOpponents
-        .map((team) => ({
-          team,
-          probability: predictions.get(team.id)?.find((x) => x.playerId === player.id)?.probability ?? 0,
-        }))
-        .filter((x) => x.probability >= 0.015)
+        .map((team) => ({ team, probability: predictions.get(team.id)?.find((item) => item.playerId === player.id)?.probability ?? 0 }))
+        .filter((item) => item.probability >= 0.015)
         .sort((a, b) => b.probability - a.probability);
-      const collisionRisk = clamp(1 - contenders.reduce((p, c) => p * (1 - c.probability), 1));
+      const collisionRisk = clamp(1 - contenders.reduce((product, contender) => product * (1 - contender.probability), 1));
       const desire = clamp(quality * 0.43 + tierValue * 0.32 + like * 0.17 + rolloverBonus);
       const recommendationScore = clamp(desire * 0.73 + (1 - collisionRisk) * 0.27);
       const reason = rolledOver
