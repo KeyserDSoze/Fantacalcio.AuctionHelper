@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Player, SerieAClub } from "@/types";
+import { fillMissingClubTiers } from "@/lib/clubTiers";
 import { slugify } from "@/lib/utils";
 
 interface RawPlayer {
@@ -47,13 +48,14 @@ export async function parseFantamasterFile(
     });
 
   const previousClubMap = new Map(previousClubs.map((c) => [c.name.toLowerCase(), c]));
-  const clubs: SerieAClub[] = [...new Set(players.map((p) => p.club))]
+  const rawClubs: SerieAClub[] = [...new Set(players.map((p) => p.club))]
     .sort((a, b) => a.localeCompare(b, "it"))
     .map((name) => ({
       id: slugify(name),
       name,
       tier: previousClubMap.get(name.toLowerCase())?.tier ?? null,
     }));
+  const clubs = fillMissingClubTiers(players, rawClubs);
 
   return { players, clubs };
 }
