@@ -63,7 +63,7 @@ export function auctionPool(players: Player[], auction: AuctionState) {
 
 export function effectiveBasePrice(player: Player, allPlayers: Player[], auction: AuctionState) {
   if (auction.currentRole !== "P" || auction.goalkeeperMode !== "PACKAGE") return player.basePrice;
-  return goalkeeperPackage(allPlayers, player).reduce((sum, item) => sum + item.basePrice, 0);
+  return goalkeeperPackage(allPlayers, player)[0]?.basePrice ?? player.basePrice;
 }
 
 function percentile(player: Player, pool: Player[], allPlayers: Player[], auction: AuctionState) {
@@ -106,7 +106,7 @@ function roleMarketMultiplier(role: Role, players: Player[], purchases: Purchase
       if (seenBundles.has(purchase.bundleId)) return;
       seenBundles.add(purchase.bundleId);
       const group = purchases.filter((item) => item.bundleId === purchase.bundleId);
-      const base = group.reduce((sum, item) => sum + (players.find((player) => player.id === item.playerId)?.basePrice ?? 0), 0);
+      const base = Math.max(0, ...group.map((item) => players.find((player) => player.id === item.playerId)?.basePrice ?? 0));
       const paid = group.reduce((sum, item) => sum + purchaseBudgetImpact(item), 0);
       if (base > 0 && paid > 0) roleSamples.push(paid / base);
       return;

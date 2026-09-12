@@ -12,7 +12,7 @@ function pendingBasePrice(purchase: Purchase, data: AppSnapshot) {
   const group = purchase.bundleId
     ? data.purchases.filter((item) => item.bundleId === purchase.bundleId)
     : [purchase];
-  return group.reduce((sum, item) => sum + (data.players.find((player) => player.id === item.playerId)?.basePrice ?? 0), 0);
+  return Math.max(0, ...group.map((item) => data.players.find((player) => player.id === item.playerId)?.basePrice ?? 0));
 }
 
 function pendingLabel(purchase: Purchase, data: AppSnapshot) {

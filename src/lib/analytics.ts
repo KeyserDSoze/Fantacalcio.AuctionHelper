@@ -89,7 +89,7 @@ function purchaseRatioSamples(teamId: string | null, players: Player[], purchase
   });
   bundled.forEach((group) => {
     if (group.some((purchase) => purchase.pricePending)) return;
-    const base = group.reduce((sum, purchase) => sum + (playerMap.get(purchase.playerId)?.basePrice ?? 0), 0);
+    const base = Math.max(0, ...group.map((purchase) => playerMap.get(purchase.playerId)?.basePrice ?? 0));
     const paid = group.reduce((sum, purchase) => sum + purchaseBudgetImpact(purchase), 0);
     if (base > 0) ratios.push(paid / base);
   });

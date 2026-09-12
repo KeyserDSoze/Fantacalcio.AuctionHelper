@@ -27,7 +27,7 @@ export function MarketPage({
       .filter((purchase) => !purchase.bundleId || purchase.pricePending || purchaseBudgetImpact(purchase) > 0)
       .map((purchase) => {
         const bundle = purchase.bundleId ? data.purchases.filter((item) => item.bundleId === purchase.bundleId) : [purchase];
-        const baseReference = bundle.reduce((sum, item) => sum + (data.players.find((player) => player.id === item.playerId)?.basePrice ?? 0), 0);
+        const baseReference = Math.max(0, ...bundle.map((item) => data.players.find((player) => player.id === item.playerId)?.basePrice ?? 0));
         return {
           id: purchase.id,
           kind: "WON" as const,

@@ -53,7 +53,7 @@ export function PlayersPage({
         const rankedPackages = [...byClub.entries()]
           .map(([club, players]) => ({ club, players: [...players].sort((a, b) => b.basePrice - a.basePrice).slice(0, MAX_GOALKEEPERS_PER_PACKAGE) }))
           .filter((item) => item.players.length >= MIN_GOALKEEPERS_PER_PACKAGE)
-          .sort((a, b) => b.players.reduce((sum, player) => sum + player.basePrice, 0) - a.players.reduce((sum, player) => sum + player.basePrice, 0));
+          .sort((a, b) => (b.players[0]?.basePrice ?? 0) - (a.players[0]?.basePrice ?? 0));
         const topClubs = new Set(rankedPackages.slice(0, 9).map((item) => item.club));
         available.forEach((player) => changes.set(player.id, { ...player, targetChoice: topClubs.has(player.club) ? 1 : null }));
         return;
