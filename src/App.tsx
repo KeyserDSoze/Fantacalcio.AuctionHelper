@@ -21,7 +21,7 @@ export function App() {
     {page === "auction" && <AuctionPage data={data} onAuction={api.updateAuction} onPurchase={api.addPurchase} onPurchaseBundle={api.addPurchaseBundle} onBid={api.addBid} />}
     {page === "market" && <MarketPage data={data} onUndoPurchase={api.undoPurchase} onDeleteBid={api.removeBid} />}
     {page === "report" && <FinalReportPage data={data} onAuction={api.updateAuction} />}
-    {page === "players" && <PlayersPage data={data} onPlayer={api.updatePlayer} onCatalog={api.replaceCatalog} />}
+    {page === "players" && <PlayersPage data={data} onPlayer={api.updatePlayer} onPlayers={api.updatePlayers} onCatalog={api.replaceCatalog} />}
     {page === "clubs" && <ClubsPage data={data} onClub={api.updateClub} />}
     {page === "opponents" && <OpponentsPage data={data} onTeam={api.updateTeam} />}
     {page === "data" && <DataPage onExport={api.exportBackup} onImport={api.importBackup} />}
