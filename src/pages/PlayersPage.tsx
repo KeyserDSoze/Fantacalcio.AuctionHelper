@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Heart, Search, Sparkles, Upload, XCircle } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Heart, Search, Sparkles, Upload, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,21 @@ import type { AppSnapshot, Player, Role } from "@/types";
 import { ROLE_LABELS, ROLE_LIMITS } from "@/types";
 import { parseFantamasterFile } from "@/lib/excel";
 import { MAX_GOALKEEPERS_PER_PACKAGE, MIN_GOALKEEPERS_PER_PACKAGE } from "@/lib/strategy";
+
+type SortKey = "name" | "role" | "basePrice" | "club" | "priorityTier" | "targetChoice" | "status";
+type SortDirection = "asc" | "desc";
+
+const SORT_LABELS: Record<SortKey, string> = {
+  name: "Giocatore",
+  role: "Ruolo",
+  basePrice: "Quota",
+  club: "Squadra",
+  priorityTier: "Mio tier",
+  targetChoice: "Scelta",
+  status: "Stato",
+};
+
+const ROLE_ORDER: Record<Role, number> = { P: 0, D: 1, C: 2, A: 3 };
 
 export function PlayersPage({
   data,
@@ -24,11 +39,49 @@ export function PlayersPage({
   const fileRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [role, setRole] = useState<"ALL" | Role>("ALL");
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [page, setPage] = useState(0);
   const [message, setMessage] = useState("");
   const pageSize = 50;
-  const filtered = useMemo(() => data.players.filter((p) => (role === "ALL" || p.role === role) && `${p.name} ${p.club}`.toLowerCase().includes(query.toLowerCase())).sort((a,b) => a.name.localeCompare(b.name,"it")), [data.players, query, role]);
+  const filtered = useMemo(() => {
+    const visible = data.players.filter((player) =>
+      (role === "ALL" || player.role === role) &&
+      `${player.name} ${player.club}`.toLowerCase().includes(query.toLowerCase())
+    );
+    const direction = sortDirection === "asc" ? 1 : -1;
+    return [...visible].sort((a, b) => {
+      let comparison = 0;
+      switch (sortKey) {
+        case "name": comparison = a.name.localeCompare(b.name, "it"); break;
+        case "role": comparison = ROLE_ORDER[a.role] - ROLE_ORDER[b.role]; break;
+        case "basePrice": comparison = a.basePrice - b.basePrice; break;
+        case "club": comparison = a.club.localeCompare(b.club, "it"); break;
+        case "priorityTier": comparison = (a.priorityTier ?? 99) - (b.priorityTier ?? 99); break;
+        case "targetChoice": comparison = (a.targetChoice ?? 99) - (b.targetChoice ?? 99); break;
+        case "status": comparison = a.status.localeCompare(b.status); break;
+      }
+      if (comparison === 0) comparison = a.name.localeCompare(b.name, "it");
+      return comparison * direction;
+    });
+  }, [data.players, query, role, sortKey, sortDirection]);
   const paged = filtered.slice(page * pageSize, page * pageSize + pageSize);
+
+  const changeSort = (key: SortKey) => {
+    setPage(0);
+    if (sortKey === key) {
+      setSortDirection((current) => current === "asc" ? "desc" : "asc");
+      return;
+    }
+    setSortKey(key);
+    setSortDirection(key === "basePrice" ? "desc" : "asc");
+  };
+
+  const sortIcon = (key: SortKey) => sortKey !== key
+    ? <ArrowUpDown className="h-3.5 w-3.5 opacity-50" />
+    : sortDirection === "asc"
+      ? <ArrowUp className="h-3.5 w-3.5" />
+      : <ArrowDown className="h-3.5 w-3.5" />;
 
   const importFile = async (file?: File) => {
     if (!file) return;
@@ -89,7 +142,7 @@ export function PlayersPage({
     {message && <div className="rounded-lg border border-primary/30 bg-primary/10 p-3 text-sm text-primary">{message}</div>}
     <Card className="border-primary/20"><CardContent className="p-3 text-sm text-muted-foreground sm:p-4"><strong className="text-foreground">Auto scelte:</strong> ordina i liberi per quotazione. Posizioni 1–9 → 1ª scelta, 10–18 → 2ª, 19–27 → 3ª e così via. Ripremendolo durante l'asta la graduatoria si ricompatta automaticamente togliendo chi è già stato preso. In modalità pacchetto portieri assegna la 1ª scelta ai 9 pacchetti più costosi, considerando validi i club con almeno 2 portieri disponibili.</CardContent></Card>
     <Card><CardHeader><CardTitle>Catalogo · {filtered.length} giocatori</CardTitle></CardHeader><CardContent>
-      <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_auto]"><div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Cerca nome o squadra…" value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} /></div><Select className="w-full sm:w-auto" value={role} onChange={(e) => { setRole(e.target.value as typeof role); setPage(0); }}><option value="ALL">Tutti i ruoli</option>{(["P","D","C","A"] as Role[]).map((r) => <option value={r} key={r}>{ROLE_LABELS[r]}</option>)}</Select></div>
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_auto_auto_auto]"><div className="relative sm:col-span-2 xl:col-span-1"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Cerca nome o squadra…" value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} /></div><Select className="w-full" value={role} onChange={(e) => { setRole(e.target.value as typeof role); setPage(0); }}><option value="ALL">Tutti i ruoli</option>{(["P","D","C","A"] as Role[]).map((r) => <option value={r} key={r}>{ROLE_LABELS[r]}</option>)}</Select><Select className="w-full md:hidden" value={sortKey} onChange={(e) => { setSortKey(e.target.value as SortKey); setSortDirection(e.target.value === "basePrice" ? "desc" : "asc"); setPage(0); }}>{(Object.keys(SORT_LABELS) as SortKey[]).map((key) => <option key={key} value={key}>Ordina: {SORT_LABELS[key]}</option>)}</Select><Select className="w-full md:hidden" value={sortDirection} onChange={(e) => { setSortDirection(e.target.value as SortDirection); setPage(0); }}><option value="asc">Crescente</option><option value="desc">Decrescente</option></Select></div>
 
       <div className="space-y-3 md:hidden">
         {paged.map((player) => <div key={player.id} className={`rounded-xl border p-3 ${player.status === "WON" ? "opacity-65" : ""}`}>
@@ -100,7 +153,7 @@ export function PlayersPage({
         </div>)}
       </div>
 
-      <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[1000px] text-sm"><thead className="text-left text-xs uppercase text-muted-foreground"><tr><th className="pb-3">Giocatore</th><th>Ruolo</th><th>Quota</th><th>Squadra</th><th>Gradimento</th><th>Mio tier</th><th>Scelta pianificata</th><th>Stato</th></tr></thead><tbody>
+      <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[1000px] text-sm"><thead className="text-left text-xs uppercase text-muted-foreground"><tr><th className="pb-3"><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("name")}>Giocatore{sortIcon("name")}</button></th><th><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("role")}>Ruolo{sortIcon("role")}</button></th><th><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("basePrice")}>Quota{sortIcon("basePrice")}</button></th><th><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("club")}>Squadra{sortIcon("club")}</button></th><th>Gradimento</th><th><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("priorityTier")}>Mio tier{sortIcon("priorityTier")}</button></th><th><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("targetChoice")}>Scelta pianificata{sortIcon("targetChoice")}</button></th><th><button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => changeSort("status")}>Stato{sortIcon("status")}</button></th></tr></thead><tbody>
         {paged.map((player) => <tr key={player.id} className="border-t"><td className="py-3"><div className="font-semibold">{player.name}</div>{player.isTrequartista && <div className="text-[11px] text-muted-foreground">Trequartista</div>}</td><td><Badge>{player.role}</Badge></td><td className="font-bold tabular">{player.basePrice}</td><td>{player.club}</td><td>{preferenceButtons(player)}</td><td>{tierSelect(player)}</td><td>{choiceSelect(player)}</td><td>{player.status === "WON" ? <Badge className="border-primary/30 bg-primary/10 text-primary">Assegnato</Badge> : <Badge>Libero</Badge>}</td></tr>)}
       </tbody></table></div>
       {data.players.length === 0 && <div className="py-14 text-center text-muted-foreground">Importa il file Excel FantaMaster per iniziare.</div>}
