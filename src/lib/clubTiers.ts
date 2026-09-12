@@ -37,7 +37,8 @@ export function buildClubTierMetrics(players: Player[], clubs: SerieAClub[]): Cl
 /**
  * AUTO viene sempre ricalcolato dal listone corrente. I vecchi tier non null
  * senza tierSource sono considerati MANUAL, perché prima di questa feature
- * potevano essere impostati solo dall'utente.
+ * potevano essere impostati solo dall'utente. Tutti i tier manuali vengono
+ * normalizzati nell'unica scala supportata: 1–4.
  */
 export function applyAutomaticClubTiers(players: Player[], clubs: SerieAClub[]) {
   const metrics = buildClubTierMetrics(players, clubs);
@@ -46,7 +47,10 @@ export function applyAutomaticClubTiers(players: Player[], clubs: SerieAClub[]) 
   return clubs.map((club) => {
     const legacyManual = club.tierSource === undefined && club.tier != null;
     const isManual = club.tierSource === "MANUAL" || legacyManual;
-    if (isManual) return { ...club, tierSource: "MANUAL" as const };
+    if (isManual) {
+      const normalizedTier = Math.min(4, Math.max(1, club.tier ?? 4));
+      return { ...club, tier: normalizedTier, tierSource: "MANUAL" as const };
+    }
     return {
       ...club,
       tier: tierByClub.get(club.name) ?? 4,
