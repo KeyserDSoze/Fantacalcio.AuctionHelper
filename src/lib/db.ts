@@ -91,6 +91,14 @@ export async function savePlayer(player: Player) {
   const db = await getDb();
   await db.put("players", player);
 }
+
+export async function savePlayers(players: Player[]) {
+  const db = await getDb();
+  const tx = db.transaction("players", "readwrite");
+  for (const player of players) await tx.store.put(player);
+  await tx.done;
+}
+
 export async function saveClub(club: SerieAClub) {
   const db = await getDb();
   await db.put("clubs", club);
