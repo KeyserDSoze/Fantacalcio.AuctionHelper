@@ -12,7 +12,7 @@ export function ClubsPage({ data, onClub }: { data: AppSnapshot; onClub: (c: Ser
   return <div className="space-y-4 sm:space-y-6">
     <div><h1 className="text-2xl font-bold sm:text-3xl">Tier squadre Serie A</h1><p className="mt-1 text-sm text-muted-foreground sm:text-base">Il default nasce dalla somma delle quotazioni dei 15 giocatori più costosi di ogni club. Le 20 squadre vengono ordinate e divise in 4 tier da 5; i tuoi override manuali restano invariati.</p></div>
 
-    <Card className="border-primary/20"><CardContent className="p-4 text-sm text-muted-foreground"><strong className="text-foreground">Tier automatico:</strong> Top 15 per quotazione → somma → classifica club → posizioni 1–5 Tier 1, 6–10 Tier 2, 11–15 Tier 3, 16–20 Tier 4. Se importi un nuovo listone, solo i tier in modalità automatica vengono ricalcolati.</CardContent></Card>
+    <Card className="border-primary/20"><CardContent className="p-4 text-sm text-muted-foreground"><strong className="text-foreground">Tier automatico:</strong> Top 15 per quotazione → somma → classifica club → posizioni 1–5 Tier 1, 6–10 Tier 2, 11–15 Tier 3, 16–20 Tier 4. Automatico e manuale usano entrambi soltanto questi quattro tier.</CardContent></Card>
 
     <Card><CardHeader><CardTitle>{data.clubs.length} squadre</CardTitle></CardHeader><CardContent>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{orderedClubs.map((club) => {
@@ -36,7 +36,7 @@ export function ClubsPage({ data, onClub }: { data: AppSnapshot; onClub: (c: Ser
             }}
           >
             <option value="AUTO">Automatico · Tier {metric?.autoTier ?? 4}</option>
-            {[1,2,3,4,5].map((n) => <option key={n} value={n}>Manuale · Tier {n}</option>)}
+            {[1,2,3,4].map((n) => <option key={n} value={n}>Manuale · Tier {n}</option>)}
           </Select>
         </div>;
       })}</div>
