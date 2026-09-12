@@ -1,13 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { BarChart3, Database, Gavel, Menu, Moon, Shield, Sun, Target, Users, X } from "lucide-react";
+import { BarChart3, Database, Gavel, History, Menu, Moon, Shield, Sun, Target, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export type PageKey = "dashboard" | "auction" | "players" | "clubs" | "opponents" | "data";
+export type PageKey = "dashboard" | "auction" | "market" | "players" | "clubs" | "opponents" | "data";
 
 const items: { key: PageKey; label: string; icon: typeof BarChart3; group: string }[] = [
   { key: "dashboard", label: "Dashboard", icon: BarChart3, group: "Asta" },
   { key: "auction", label: "Gestione asta", icon: Gavel, group: "Asta" },
+  { key: "market", label: "Mercato & storico", icon: History, group: "Asta" },
   { key: "players", label: "Giocatori", icon: Target, group: "Amministrazione" },
   { key: "clubs", label: "Tier Serie A", icon: Shield, group: "Amministrazione" },
   { key: "opponents", label: "Avversari", icon: Users, group: "Amministrazione" },
