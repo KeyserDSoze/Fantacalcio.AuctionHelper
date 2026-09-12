@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, CheckCircle2, Coins, Package, RotateCcw, Search, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Coins, Crosshair, Package, RotateCcw, Search, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { AppSnapshot, AuctionState, ObservedBid, Player, Purchase, Role } from "@/types";
 import { ROLE_LABELS, ROLE_LIMITS } from "@/types";
-import { activeTeamsForState, getSozeCandidates, predictOpponentTargets } from "@/lib/strategy";
+import { activeTeamsForState, getSozeCandidates, predictOpponentTargets, type CandidateSource } from "@/lib/strategy";
 import { observedBehavior, teamSnapshot } from "@/lib/analytics";
 import { clamp, money } from "@/lib/utils";
 
@@ -25,6 +25,7 @@ function packageRepresentatives(players: Player[]) {
     byClub.set(player.club, [...(byClub.get(player.club) ?? []), player]);
   });
   return [...byClub.values()]
+    .filter((group) => group.length >= 3)
     .map((group) => [...group].sort((a, b) => b.basePrice - a.basePrice)[0])
     .filter((player): player is Player => Boolean(player));
 }
@@ -42,6 +43,7 @@ export function AuctionPage({
   onPurchaseBundle: (purchases: Purchase[], players: Player[]) => Promise<void>;
   onBid: (bid: ObservedBid) => Promise<void>;
 }) {
+  const [candidateSource, setCandidateSource] = useState<CandidateSource>("MY_LIST");
   const [teamId, setTeamId] = useState("soze-heaven");
   const [playerQuery, setPlayerQuery] = useState("");
   const [selectedPlayerId, setSelectedPlayerId] = useState("");
@@ -57,7 +59,10 @@ export function AuctionPage({
   const isClosed = Boolean(data.auction.closedAt);
   const packageMode = data.auction.currentRole === "P" && data.auction.goalkeeperMode === "PACKAGE";
   const hasGoalkeeperPurchases = data.purchases.some((purchase) => purchase.role === "P");
-  const candidates = useMemo(() => getSozeCandidates(data.players, data.clubs, data.teams, data.purchases, data.auction, data.bids), [data]);
+  const candidates = useMemo(
+    () => getSozeCandidates(data.players, data.clubs, data.teams, data.purchases, data.auction, data.bids, candidateSource),
+    [data, candidateSource],
+  );
   const predictions = useMemo(() => predictOpponentTargets(data.teams, data.players, data.clubs, data.purchases, data.auction, data.bids), [data]);
   const active = activeTeamsForState(data.teams, data.purchases, data.auction);
   const activeIds = new Set(active.map((team) => team.id));
@@ -94,6 +99,12 @@ export function AuctionPage({
       setPlayerQuery(packageMode ? `Pacchetto ${player.club}` : player.name);
       setPrice(String(minimum));
     }
+  };
+
+  const useCandidate = (player: Player, bid: number) => {
+    setTeamId("soze-heaven");
+    selectPlayer(player);
+    setPrice(String(bid));
   };
 
   const register = async () => {
@@ -162,7 +173,7 @@ export function AuctionPage({
   };
 
   return <div className="space-y-6">
-    <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end"><div><h1 className="text-3xl font-bold">Gestione asta</h1><p className="mt-1 text-muted-foreground">Basket dinamico, rollover dei target e modello che impara dalle buste reali.</p></div><div className="flex flex-wrap gap-2">{(["P","D","C","A"] as Role[]).map((role) => <Button key={role} disabled={isClosed} variant={data.auction.currentRole === role ? "default" : "outline"} onClick={() => setPhase(role)}>{role} · {ROLE_LABELS[role]}</Button>)}</div></div>
+    <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end"><div><h1 className="text-3xl font-bold">Gestione asta</h1><p className="mt-1 text-muted-foreground">Basket dinamico, rollover dei target, prezzi previsti e modello che impara dalle buste reali.</p></div><div className="flex flex-wrap gap-2">{(["P","D","C","A"] as Role[]).map((role) => <Button key={role} disabled={isClosed} variant={data.auction.currentRole === role ? "default" : "outline"} onClick={() => setPhase(role)}>{role} · {ROLE_LABELS[role]}</Button>)}</div></div>
 
     {isClosed && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-600"><strong>Asta chiusa.</strong> La gestione è in sola lettura. Puoi riaprirla dal Report finale.</div>}
 
@@ -174,17 +185,46 @@ export function AuctionPage({
       <Card><CardContent className="p-5"><div className="text-xs uppercase text-muted-foreground">Ancora in gioco</div><div className="mt-1 text-2xl font-bold">{active.length}/9</div></CardContent></Card>
     </div>
 
-    <div className="grid gap-6 2xl:grid-cols-[1.15fr_.85fr]">
+    <div className="grid gap-6 2xl:grid-cols-[1.22fr_.78fr]">
       <div className="space-y-6">
-        <Card><CardHeader className="flex-row items-center justify-between space-y-0"><div><CardTitle>Le nostre migliori chiamate</CardTitle><div className="mt-1 text-sm text-muted-foreground">Include i target delle scelte precedenti ancora liberi e ricalcola le collisioni live.</div></div><Sparkles className="h-5 w-5 text-primary" /></CardHeader><CardContent className="space-y-3">
-          {candidates.slice(0, 12).map((candidate, index) => <div key={candidate.player.id} className="rounded-xl border p-4"><div className="flex flex-col justify-between gap-3 md:flex-row md:items-start"><div className="flex gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 font-bold text-primary">{index + 1}</div><div><div className="flex flex-wrap items-center gap-2"><span className="text-lg font-bold">{packageMode ? `Pacchetto ${candidate.player.club}` : candidate.player.name}</span><Badge>{candidate.player.club}</Badge><Badge>{candidate.player.role}</Badge>{candidate.rolledOver && <Badge className="border-amber-500/30 bg-amber-500/10 text-amber-600">ROLLOVER</Badge>}</div><div className="mt-1 text-sm text-muted-foreground">Quota {packageMode ? goalkeeperPackage(data.players, candidate.player).reduce((sum, player) => sum + player.basePrice, 0) : candidate.player.basePrice} · Tier personale {candidate.player.priorityTier ?? "—"} · pianificato {candidate.player.targetChoice ? `${candidate.player.targetChoice}ª` : "—"}</div></div></div><div className="text-right"><div className="text-xs text-muted-foreground">Recommendation</div><div className="text-2xl font-black text-primary">{Math.round(candidate.recommendationScore * 100)}</div></div></div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.2fr]"><div><div className="mb-1 flex justify-between text-xs"><span>Rischio collisione</span><span className={candidate.collisionRisk > .5 ? "text-red-500" : candidate.collisionRisk > .25 ? "text-amber-500" : "text-primary"}>{Math.round(candidate.collisionRisk * 100)}%</span></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{width:`${clamp(candidate.collisionRisk) * 100}%`}} /></div><div className="mt-2 text-xs text-muted-foreground">{candidate.reason}</div></div><div><div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Possibili collisioni</div><div className="flex flex-wrap gap-2">{candidate.contenders.length ? candidate.contenders.slice(0,4).map((contender) => <Badge key={contender.team.id}>{contender.team.name} · {Math.round(contender.probability * 100)}%</Badge>) : <span className="text-xs text-muted-foreground">Nessun avversario con probabilità rilevante.</span>}</div></div></div>
-          </div>)}
-          {!candidates.length && <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">Nessun target configurato per questa scelta. Vai su Giocatori e assegna tier/scelta pianificata.</div>}
-        </CardContent></Card>
+        <Card>
+          <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
+            <div><CardTitle>Basket decisionale Soze Heaven</CardTitle><div className="mt-1 text-sm text-muted-foreground">Scegli se ragionare sui tuoi target pianificati oppure sui 9 nomi più costosi ancora disponibili.</div></div>
+            <div className="flex rounded-lg border p-1">
+              <Button size="sm" variant={candidateSource === "MY_LIST" ? "default" : "ghost"} onClick={() => setCandidateSource("MY_LIST")}>Miei target</Button>
+              <Button size="sm" variant={candidateSource === "TOP9" ? "default" : "ghost"} onClick={() => setCandidateSource("TOP9")}>Top 9 rimasti</Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {candidates.map((candidate, index) => {
+              const base = packageMode ? goalkeeperPackage(data.players, candidate.player).reduce((sum, player) => sum + player.basePrice, 0) : candidate.player.basePrice;
+              return <div key={candidate.player.id} className="rounded-xl border p-4">
+                <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
+                  <div className="flex gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 font-bold text-primary">{index + 1}</div><div><div className="flex flex-wrap items-center gap-2"><span className="text-lg font-bold">{packageMode ? `Pacchetto ${candidate.player.club}` : candidate.player.name}</span><Badge>{candidate.player.club}</Badge><Badge>{candidate.player.role}</Badge>{candidate.rolledOver && <Badge className="border-amber-500/30 bg-amber-500/10 text-amber-600">ROLLOVER</Badge>}{candidate.player.personalRating === "LIKE" && <Badge className="border-primary/30 bg-primary/10 text-primary">MI PIACE</Badge>}{candidate.player.personalRating === "AVOID" && <Badge className="border-red-500/30 bg-red-500/10 text-red-500">EVITA</Badge>}</div><div className="mt-1 text-sm text-muted-foreground">Quota {base} · Tier personale {candidate.player.priorityTier ?? "—"} · pianificato {candidate.player.targetChoice ? `${candidate.player.targetChoice}ª` : "—"}</div></div></div>
+                  <div className="flex items-center gap-4 lg:text-right"><div><div className="text-xs text-muted-foreground">Score</div><div className="text-2xl font-black text-primary">{Math.round(candidate.recommendationScore * 100)}</div></div><div><div className="text-xs text-muted-foreground">Presa con {candidate.winBid}</div><div className="text-2xl font-black">{Math.round(candidate.winProbability * 100)}%</div></div></div>
+                </div>
+
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                  <Metric label="Mercato atteso" value={`~${candidate.expectedMarketPrice}`} />
+                  <Metric label="Offerta sensata" value={String(candidate.sensibleBid)} />
+                  <Metric label="Per prenderlo" value={String(candidate.winBid)} emphasis />
+                  <Metric label="Tetto sostenibile" value={String(candidate.maxSustainableBid)} />
+                  <Metric label="Collisione" value={`${Math.round(candidate.collisionRisk * 100)}%`} />
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.35fr_auto] lg:items-end">
+                  <div><div className="mb-1 flex justify-between text-xs"><span>Probabilità di successo</span><span>{Math.round(candidate.winProbability * 100)}%</span></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{width:`${clamp(candidate.winProbability) * 100}%`}} /></div><div className="mt-2 text-xs text-muted-foreground">{candidate.reason}</div></div>
+                  <div><div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Chi può chiamarlo · probabilità · prezzo previsto</div><div className="flex flex-wrap gap-2">{candidate.contenders.length ? candidate.contenders.slice(0,6).map((contender) => <Badge key={contender.team.id}>{contender.team.name} · {Math.round(contender.probability * 100)}% · ~{contender.expectedBid}</Badge>) : <span className="text-xs text-muted-foreground">Nessun avversario con probabilità rilevante.</span>}</div></div>
+                  <Button size="sm" onClick={() => useCandidate(candidate.player, candidate.winBid)}><Crosshair className="h-4 w-4" />Usa {candidate.winBid}</Button>
+                </div>
+              </div>;
+            })}
+            {!candidates.length && <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">{candidateSource === "MY_LIST" ? "Nessun target configurato per questa scelta. Vai su Giocatori oppure usa Auto scelte · blocchi da 9." : "Non ci sono giocatori disponibili in questo ruolo."}</div>}
+          </CardContent>
+        </Card>
 
         <Card><CardHeader><CardTitle>Papabili avversari nel sottoround</CardTitle></CardHeader><CardContent className="grid gap-3 md:grid-cols-2">
-          {active.filter((team) => !team.isMe).map((team) => { const behavior = observedBehavior(team, data.players, data.purchases, data.bids); return <div key={team.id} className="rounded-xl border p-4"><div className="mb-3 flex items-center justify-between gap-2"><div className="font-semibold">{team.name}</div><div className="flex gap-1"><Badge>{team.profile.split("_").join(" ")}</Badge><Badge>{behavior.multiplier.toFixed(2)}×</Badge></div></div><div className="space-y-2">{(predictions.get(team.id) ?? []).slice(0,3).map((prediction) => { const player = data.players.find((item) => item.id === prediction.playerId)!; return <div key={prediction.playerId} className="flex items-center justify-between text-sm"><div><span className="font-medium">{packageMode ? `Pacchetto ${player.club}` : player.name}</span><span className="ml-2 text-xs text-muted-foreground">{player.club}</span></div><span className="tabular text-muted-foreground">{Math.round(prediction.probability * 100)}%</span></div> })}</div></div> })}
+          {active.filter((team) => !team.isMe).map((team) => { const behavior = observedBehavior(team, data.players, data.purchases, data.bids); return <div key={team.id} className="rounded-xl border p-4"><div className="mb-3 flex items-center justify-between gap-2"><div className="font-semibold">{team.name}</div><div className="flex gap-1"><Badge>{team.profile.split("_").join(" ")}</Badge><Badge>{behavior.multiplier.toFixed(2)}×</Badge></div></div><div className="space-y-2">{(predictions.get(team.id) ?? []).slice(0,4).map((prediction) => { const player = data.players.find((item) => item.id === prediction.playerId)!; return <div key={prediction.playerId} className="flex items-center justify-between gap-3 text-sm"><div><span className="font-medium">{packageMode ? `Pacchetto ${player.club}` : player.name}</span><span className="ml-2 text-xs text-muted-foreground">{player.club}</span></div><div className="text-right"><div className="font-semibold tabular">~{prediction.expectedBid}</div><div className="text-xs text-muted-foreground">{Math.round(prediction.probability * 100)}%</div></div></div> })}</div></div> })}
         </CardContent></Card>
       </div>
 
@@ -206,4 +246,8 @@ export function AuctionPage({
       </div>
     </div>
   </div>;
+}
+
+function Metric({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
+  return <div className={`rounded-lg border p-3 ${emphasis ? "border-primary/30 bg-primary/10" : "bg-muted/40"}`}><div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div><div className={`mt-1 text-lg font-black tabular ${emphasis ? "text-primary" : ""}`}>{value}</div></div>;
 }
