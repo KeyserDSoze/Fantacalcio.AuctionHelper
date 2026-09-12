@@ -1,13 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { BarChart3, Database, Gavel, History, Menu, Moon, Shield, Sparkles, Sun, Target, Users, X } from "lucide-react";
+import { BarChart3, Database, Gavel, History, Menu, Moon, ReceiptText, Shield, Sparkles, Sun, Target, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export type PageKey = "dashboard" | "auction" | "market" | "report" | "players" | "clubs" | "opponents" | "data";
+export type PageKey = "dashboard" | "auction" | "prices" | "market" | "report" | "players" | "clubs" | "opponents" | "data";
 
 const items: { key: PageKey; label: string; icon: typeof BarChart3; group: string }[] = [
   { key: "dashboard", label: "Dashboard", icon: BarChart3, group: "Asta" },
   { key: "auction", label: "Gestione asta", icon: Gavel, group: "Asta" },
+  { key: "prices", label: "Prezzi da completare", icon: ReceiptText, group: "Asta" },
   { key: "market", label: "Mercato & storico", icon: History, group: "Asta" },
   { key: "report", label: "Report finale", icon: Sparkles, group: "Asta" },
   { key: "players", label: "Giocatori", icon: Target, group: "Amministrazione" },
@@ -16,7 +17,7 @@ const items: { key: PageKey; label: string; icon: typeof BarChart3; group: strin
   { key: "data", label: "Dati & backup", icon: Database, group: "Sistema" },
 ];
 
-const mobileQuick: PageKey[] = ["dashboard", "auction", "market", "players"];
+const mobileQuick: PageKey[] = ["dashboard", "auction", "prices", "market", "players"];
 
 export function Layout({ page, onPage, children }: { page: PageKey; onPage: (p: PageKey) => void; children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -63,12 +64,12 @@ export function Layout({ page, onPage, children }: { page: PageKey; onPage: (p: 
         <div className="mx-auto max-w-[1600px] p-3 sm:p-4 lg:p-8">{children}</div>
       </main>
 
-      <nav className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t px-1 pb-[max(.35rem,env(safe-area-inset-bottom))] pt-1.5 lg:hidden">
+      <nav className="glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t px-1 pb-[max(.35rem,env(safe-area-inset-bottom))] pt-1.5 lg:hidden">
         {mobileQuick.map((key) => {
           const item = items.find((entry) => entry.key === key)!;
           const Icon = item.icon;
-          const shortLabel = key === "dashboard" ? "Home" : key === "auction" ? "Asta" : key === "market" ? "Mercato" : "Giocatori";
-          return <button key={key} onClick={() => onPage(key)} className={cn("flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[11px] font-medium", page === key ? "text-primary" : "text-muted-foreground")}><Icon className={cn("h-5 w-5", page === key && "stroke-[2.5]")} /><span>{shortLabel}</span></button>;
+          const shortLabel = key === "dashboard" ? "Home" : key === "auction" ? "Asta" : key === "prices" ? "Prezzi" : key === "market" ? "Mercato" : "Giocatori";
+          return <button key={key} onClick={() => onPage(key)} className={cn("flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[10px] font-medium", page === key ? "text-primary" : "text-muted-foreground")}><Icon className={cn("h-5 w-5", page === key && "stroke-[2.5]")} /><span>{shortLabel}</span></button>;
         })}
       </nav>
     </div>
