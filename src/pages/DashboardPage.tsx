@@ -1,25 +1,27 @@
-import { Coins, Crown, Target, Users } from "lucide-react";
+import { Coins, Crown, RotateCcw, Target, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/StatCard";
-import type { AppSnapshot, Role } from "@/types";
+import type { AppSnapshot, Purchase, Role } from "@/types";
 import { ROLE_LABELS, ROLE_LIMITS } from "@/types";
 import { teamSnapshot } from "@/lib/analytics";
 import { money } from "@/lib/utils";
 
-export function DashboardPage({ data }: { data: AppSnapshot }) {
+export function DashboardPage({ data, onUndoPurchase }: { data: AppSnapshot; onUndoPurchase: (purchase: Purchase) => Promise<void> }) {
   const snapshots = data.teams.map((t) => teamSnapshot(t, data.players, data.purchases)).sort((a, b) => b.remaining - a.remaining);
   const me = snapshots.find((t) => t.isMe)!;
   const recent = [...data.purchases].sort((a, b) => b.timestamp - a.timestamp).slice(0, 8);
+  const latest = recent[0];
   const available = data.players.filter((p) => p.status === "AVAILABLE").length;
 
   return <div className="space-y-6">
-    <div><h1 className="text-3xl font-bold tracking-tight">Dashboard</h1><p className="mt-1 text-muted-foreground">Situazione economica e andamento dell'asta in tempo reale.</p></div>
+    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-3xl font-bold tracking-tight">Dashboard</h1><p className="mt-1 text-muted-foreground">Situazione economica e andamento dell'asta in tempo reale.</p></div>{latest && <Button variant="outline" onClick={() => void onUndoPurchase(latest)}><RotateCcw className="h-4 w-4" />Annulla ultimo acquisto</Button>}</div>
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard label="Budget Soze Heaven" value={money(me.remaining)} note={`Budget libero stimato: ${money(me.freeBudget)}`} icon={Coins} />
       <StatCard label="Rosa" value={`${me.totalPlayers}/25`} note="3P · 8D · 8C · 6A" icon={Users} />
       <StatCard label="Giocatori liberi" value={available} note={`${data.players.length} nel database`} icon={Target} />
-      <StatCard label="Più ricco" value={snapshots[0]?.name ?? "—"} note={`${money(snapshots[0]?.remaining ?? 0)} crediti`} icon={Crown} />
+      <StatCard label="Più ricco" value={snapshots[0]?.name ?? "—"} note={`${money(snapshots[0]?.remaining ?? 0)} crediti · ${data.bids.length} buste osservate`} icon={Crown} />
     </div>
 
     <div className="grid gap-6 xl:grid-cols-[1.35fr_.65fr]">
