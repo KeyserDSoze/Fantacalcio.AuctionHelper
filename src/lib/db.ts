@@ -26,6 +26,16 @@ interface AuctionDB extends DBSchema {
 const DB_NAME = "FantacalcioAuctionHelperDB";
 const DB_VERSION = 2;
 
+function normalizeAuction(state?: Partial<AuctionState> | null): AuctionState {
+  return {
+    ...DEFAULT_AUCTION,
+    ...(state ?? {}),
+    goalkeeperMode: state?.goalkeeperMode ?? "INDIVIDUAL",
+    closedAt: state?.closedAt ?? null,
+    resolvedTeamIds: state?.resolvedTeamIds ?? [],
+  };
+}
+
 export async function getDb() {
   const db = await openDB<AuctionDB>(DB_NAME, DB_VERSION, {
     upgrade(database) {
@@ -64,7 +74,7 @@ export async function getDb() {
 
 export async function loadAll() {
   const db = await getDb();
-  const [players, clubs, teams, purchases, bids, auction] = await Promise.all([
+  const [players, clubs, teams, purchases, bids, rawAuction] = await Promise.all([
     db.getAll("players"),
     db.getAll("clubs"),
     db.getAll("teams"),
@@ -72,7 +82,9 @@ export async function loadAll() {
     db.getAll("bids"),
     db.get("state", "auction"),
   ]);
-  return { players, clubs, teams, purchases, bids, auction: auction ?? DEFAULT_AUCTION };
+  const auction = normalizeAuction(rawAuction);
+  if (rawAuction && (rawAuction.goalkeeperMode === undefined || rawAuction.closedAt === undefined)) await db.put("state", auction);
+  return { players, clubs, teams, purchases, bids, auction };
 }
 
 export async function savePlayer(player: Player) {
@@ -89,7 +101,7 @@ export async function saveTeam(team: FantasyTeam) {
 }
 export async function saveAuctionState(state: AuctionState) {
   const db = await getDb();
-  await db.put("state", state);
+  await db.put("state", normalizeAuction(state));
 }
 
 export async function replacePlayerCatalog(players: Player[], clubs: SerieAClub[]) {
@@ -110,11 +122,27 @@ export async function addPurchase(purchase: Purchase, updatedPlayer: Player) {
   await tx.done;
 }
 
+export async function addPurchaseBundle(purchases: Purchase[], updatedPlayers: Player[]) {
+  const db = await getDb();
+  const tx = db.transaction(["purchases", "players"], "readwrite");
+  for (const purchase of purchases) await tx.objectStore("purchases").put(purchase);
+  for (const player of updatedPlayers) await tx.objectStore("players").put(player);
+  await tx.done;
+}
+
 export async function deletePurchase(purchase: Purchase, player: Player) {
   const db = await getDb();
   const tx = db.transaction(["purchases", "players"], "readwrite");
   await tx.objectStore("purchases").delete(purchase.id);
   await tx.objectStore("players").put(player);
+  await tx.done;
+}
+
+export async function deletePurchaseBundle(purchases: Purchase[], players: Player[]) {
+  const db = await getDb();
+  const tx = db.transaction(["purchases", "players"], "readwrite");
+  for (const purchase of purchases) await tx.objectStore("purchases").delete(purchase.id);
+  for (const player of players) await tx.objectStore("players").put(player);
   await tx.done;
 }
 
@@ -148,6 +176,6 @@ export async function importDatabase(snapshot: Awaited<ReturnType<typeof loadAll
   for (const item of snapshot.teams) await tx.objectStore("teams").put(item);
   for (const item of snapshot.purchases) await tx.objectStore("purchases").put(item);
   for (const item of snapshot.bids ?? []) await tx.objectStore("bids").put(item);
-  await tx.objectStore("state").put(snapshot.auction);
+  await tx.objectStore("state").put(normalizeAuction(snapshot.auction));
   await tx.done;
 }
