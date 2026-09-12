@@ -8,7 +8,7 @@ export const DEFAULT_TEAMS: FantasyTeam[] = [
   { id: "capsi", name: "Capsi", initialBudget: 500, profile: "SELECTIVE_AGGRESSIVE", supportedClubs: ["Lazio"] },
   { id: "damiano-giamma", name: "Damiano & Giamma", initialBudget: 500, profile: "CONSERVATIVE", supportedClubs: ["Juventus", "Inter"] },
   { id: "mini", name: "Mini", initialBudget: 500, profile: "CHAOTIC", supportedClubs: ["Milan"] },
-  { id: "suenac-brezio", name: "Suenac & Brezio", initialBudget: 500, profile: "TOP_HEAVY", supportedClubs: ["Inter"] },
+  { id: "suenac-brezio", name: "Swenac & Brezio", initialBudget: 500, profile: "TOP_HEAVY", supportedClubs: ["Inter"] },
   { id: "scaglia-cognato", name: "Scaglia & Cognato", initialBudget: 500, profile: "ULTRA_CONSERVATIVE", supportedClubs: ["Juventus", "Milan"] },
 ];
 
