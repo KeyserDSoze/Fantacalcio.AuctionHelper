@@ -18,4 +18,6 @@ export const DEFAULT_AUCTION: AuctionState = {
   choiceNumber: 1,
   subRound: 1,
   resolvedTeamIds: [],
+  goalkeeperMode: "INDIVIDUAL",
+  closedAt: null,
 };
