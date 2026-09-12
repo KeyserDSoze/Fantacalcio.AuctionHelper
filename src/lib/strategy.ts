@@ -1,7 +1,7 @@
 import { clamp } from "@/lib/utils";
-import type { AuctionState, FantasyTeam, Player, Purchase, PsychologyProfile, SerieAClub } from "@/types";
+import type { AuctionState, FantasyTeam, ObservedBid, Player, Purchase, PsychologyProfile, SerieAClub } from "@/types";
 import { ROLE_LIMITS } from "@/types";
-import { getRemainingBudget, minimumCompletionCost, missingByRole } from "@/lib/analytics";
+import { getRemainingBudget, minimumCompletionCost, missingByRole, observedBehavior } from "@/lib/analytics";
 
 export interface OpponentTarget {
   teamId: string;
@@ -58,6 +58,7 @@ function rawOpponentScore(
   allPlayers: Player[],
   clubs: SerieAClub[],
   purchases: Purchase[],
+  bids: ObservedBid[],
   auction: AuctionState,
 ) {
   const remaining = getRemainingBudget(team, purchases);
@@ -75,10 +76,12 @@ function rawOpponentScore(
   const stageFit = 1 - Math.abs(quality - desiredQuality);
   const noise = seededNoise(`${team.id}-${player.id}-${auction.choiceNumber}-${auction.subRound}`);
   const psychology = profileScore(team.profile, quality, cheapness, fandom, noise);
+  const learned = observedBehavior(team, allPlayers, purchases, bids);
   const freeBudget = Math.max(0, remaining - reserve);
   const budgetHeadroom = clamp((freeBudget + player.basePrice) / Math.max(player.basePrice * 2.2, 1), 0.15, 1);
+  const liveBehavior = clamp((learned.multiplier - 0.7) / 0.8, 0, 1);
 
-  return clamp(psychology * 0.53 + stageFit * 0.27 + budgetHeadroom * 0.15 + fandom * 0.05, 0, 1.35);
+  return clamp(psychology * 0.43 + stageFit * 0.24 + budgetHeadroom * 0.13 + fandom * 0.05 + liveBehavior * 0.15, 0, 1.35);
 }
 
 export function activeTeamsForState(teams: FantasyTeam[], purchases: Purchase[], auction: AuctionState) {
@@ -95,6 +98,7 @@ export function predictOpponentTargets(
   clubs: SerieAClub[],
   purchases: Purchase[],
   auction: AuctionState,
+  bids: ObservedBid[] = [],
 ) {
   const pool = players.filter((p) => p.status === "AVAILABLE" && p.role === auction.currentRole);
   const active = activeTeamsForState(teams, purchases, auction).filter((t) => !t.isMe);
@@ -102,7 +106,7 @@ export function predictOpponentTargets(
 
   active.forEach((team) => {
     const scored = pool
-      .map((player) => ({ player, score: rawOpponentScore(team, player, pool, players, clubs, purchases, auction) }))
+      .map((player) => ({ player, score: rawOpponentScore(team, player, pool, players, clubs, purchases, bids, auction) }))
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 14);
@@ -122,9 +126,10 @@ export function getSozeCandidates(
   teams: FantasyTeam[],
   purchases: Purchase[],
   auction: AuctionState,
+  bids: ObservedBid[] = [],
 ) {
   const pool = players.filter((p) => p.status === "AVAILABLE" && p.role === auction.currentRole);
-  const predictions = predictOpponentTargets(teams, players, clubs, purchases, auction);
+  const predictions = predictOpponentTargets(teams, players, clubs, purchases, auction, bids);
   const activeOpponents = activeTeamsForState(teams, purchases, auction).filter((t) => !t.isMe);
 
   return pool
