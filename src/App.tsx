@@ -5,6 +5,7 @@ import { useAuctionData } from "@/hooks/useAuctionData";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { AuctionPage } from "@/pages/AuctionPage";
 import { MarketPage } from "@/pages/MarketPage";
+import { FinalReportPage } from "@/pages/FinalReportPage";
 import { PlayersPage } from "@/pages/PlayersPage";
 import { ClubsPage } from "@/pages/ClubsPage";
 import { OpponentsPage } from "@/pages/OpponentsPage";
@@ -17,8 +18,9 @@ export function App() {
   const data = api.data;
   return <Layout page={page} onPage={setPage}>
     {page === "dashboard" && <DashboardPage data={data} onUndoPurchase={api.undoPurchase} />}
-    {page === "auction" && <AuctionPage data={data} onAuction={api.updateAuction} onPurchase={api.addPurchase} onBid={api.addBid} />}
+    {page === "auction" && <AuctionPage data={data} onAuction={api.updateAuction} onPurchase={api.addPurchase} onPurchaseBundle={api.addPurchaseBundle} onBid={api.addBid} />}
     {page === "market" && <MarketPage data={data} onUndoPurchase={api.undoPurchase} onDeleteBid={api.removeBid} />}
+    {page === "report" && <FinalReportPage data={data} onAuction={api.updateAuction} />}
     {page === "players" && <PlayersPage data={data} onPlayer={api.updatePlayer} onCatalog={api.replaceCatalog} />}
     {page === "clubs" && <ClubsPage data={data} onClub={api.updateClub} />}
     {page === "opponents" && <OpponentsPage data={data} onTeam={api.updateTeam} />}
