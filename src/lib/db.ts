@@ -1,5 +1,5 @@
 import { openDB, type DBSchema } from "idb";
-import type { AuctionState, FantasyTeam, ObservedBid, Player, Purchase, SerieAClub } from "@/types";
+import type { AppSnapshot, AuctionState, FantasyTeam, ObservedBid, Player, Purchase, SerieAClub } from "@/types";
 import { DEFAULT_AUCTION, DEFAULT_TEAMS } from "@/lib/defaults";
 import { buildDefaultCatalog } from "@/data/defaultCatalog";
 import { fillMissingClubTiers } from "@/lib/clubTiers";
@@ -91,7 +91,7 @@ export async function getDb() {
   return db;
 }
 
-export async function loadAll() {
+export async function loadAll(): Promise<AppSnapshot> {
   const db = await getDb();
   const [players, rawClubs, teams, purchases, bids, rawAuction] = await Promise.all([
     db.getAll("players"),
@@ -205,7 +205,7 @@ export async function exportDatabase() {
   return loadAll();
 }
 
-export async function importDatabase(snapshot: Awaited<ReturnType<typeof loadAll>> | (Omit<Awaited<ReturnType<typeof loadAll>>, "bids"> & { bids?: ObservedBid[] })) {
+export async function importDatabase(snapshot: AppSnapshot | (Omit<AppSnapshot, "bids"> & { bids?: ObservedBid[] })) {
   const db = await getDb();
   const tx = db.transaction(["players", "clubs", "teams", "purchases", "bids", "state"], "readwrite");
   await Promise.all([
