@@ -50,11 +50,17 @@ export async function parseFantamasterFile(
   const previousClubMap = new Map(previousClubs.map((c) => [c.name.toLowerCase(), c]));
   const rawClubs: SerieAClub[] = [...new Set(players.map((p) => p.club))]
     .sort((a, b) => a.localeCompare(b, "it"))
-    .map((name) => ({
-      id: slugify(name),
-      name,
-      tier: previousClubMap.get(name.toLowerCase())?.tier ?? null,
-    }));
+    .map((name) => {
+      const previous = previousClubMap.get(name.toLowerCase());
+      const legacyManual = previous?.tierSource === undefined && previous?.tier != null;
+      const manual = previous?.tierSource === "MANUAL" || legacyManual;
+      return {
+        id: slugify(name),
+        name,
+        tier: manual ? previous?.tier ?? null : null,
+        tierSource: manual ? "MANUAL" : "AUTO",
+      };
+    });
   const clubs = fillMissingClubTiers(players, rawClubs);
 
   return { players, clubs };
