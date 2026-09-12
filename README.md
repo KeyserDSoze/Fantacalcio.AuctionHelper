@@ -18,6 +18,10 @@ Single-page React application pensata per l'asta a chiamata con busta chiusa di 
 - Tema chiaro/scuro.
 - Deploy automatico su GitHub Pages tramite GitHub Actions.
 
+## Stato
+
+Prima MVP completa pubblicata su `main`. La GitHub Action verifica la build e pubblica la SPA su GitHub Pages.
+
 ## Avvio locale
 
 ```bash
