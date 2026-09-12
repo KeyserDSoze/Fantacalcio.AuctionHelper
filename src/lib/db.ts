@@ -138,6 +138,14 @@ export async function addPurchaseBundle(purchases: Purchase[], updatedPlayers: P
   await tx.done;
 }
 
+export async function updatePurchasesAndPlayers(purchases: Purchase[], players: Player[]) {
+  const db = await getDb();
+  const tx = db.transaction(["purchases", "players"], "readwrite");
+  for (const purchase of purchases) await tx.objectStore("purchases").put(purchase);
+  for (const player of players) await tx.objectStore("players").put(player);
+  await tx.done;
+}
+
 export async function deletePurchase(purchase: Purchase, player: Player) {
   const db = await getDb();
   const tx = db.transaction(["purchases", "players"], "readwrite");
