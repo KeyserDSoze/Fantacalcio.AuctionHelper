@@ -98,7 +98,7 @@ function ratioSamples(teamId: string | null, players: Player[], purchases: Purch
   const observed = bids
     .filter((bid) => teamId === null || bid.fantasyTeamId === teamId)
     .map((bid) => {
-      const base = playerMap.get(bid.playerId)?.basePrice ?? 0;
+      const base = bid.referenceBasePrice ?? playerMap.get(bid.playerId)?.basePrice ?? 0;
       return base > 0 ? bid.amount / base : null;
     });
   return [...wins, ...observed].filter((value): value is number => value !== null && Number.isFinite(value));
