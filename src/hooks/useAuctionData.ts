@@ -107,6 +107,60 @@ export function useAuctionData() {
       players: current.players.map((player) => changedPlayers.get(player.id) ?? player),
     } : current);
   };
+  const editPurchase = async (purchase: Purchase, nextTeamId: string, amount: number | null) => {
+    if (!data) return;
+    const source = data.purchases.find((item) => item.id === purchase.id) ?? purchase;
+    const group = (source.bundleId ? data.purchases.filter((item) => item.bundleId === source.bundleId) : [source]).sort((a, b) => a.timestamp - b.timestamp);
+    if (!group.length) return;
+    const primary = group[0];
+    const oldTeamId = primary.fantasyTeamId;
+    const changedPurchases = new Map<string, Purchase>();
+    const changedPlayers = new Map<string, Player>();
+
+    group.forEach((item, index) => {
+      const nextPurchase: Purchase = {
+        ...item,
+        fantasyTeamId: nextTeamId,
+        price: index === 0 ? (amount ?? 0) : 0,
+        budgetImpact: index === 0 ? (amount ?? 0) : 0,
+        pricePending: index === 0 ? amount === null : false,
+      };
+      changedPurchases.set(nextPurchase.id, nextPurchase);
+      const player = data.players.find((candidate) => candidate.id === item.playerId);
+      if (player) changedPlayers.set(player.id, {
+        ...player,
+        ownerId: nextTeamId,
+        purchasePrice: amount === null ? undefined : (index === 0 ? amount : 0),
+      });
+    });
+
+    await updatePurchasesAndPlayers([...changedPurchases.values()], [...changedPlayers.values()]);
+
+    let nextAuction = data.auction;
+    const sameLiveRound = primary.role === data.auction.currentRole && primary.choiceNumber === data.auction.choiceNumber && primary.subRound === data.auction.subRound;
+    if (sameLiveRound && oldTeamId !== nextTeamId) {
+      const changedIds = new Set(group.map((item) => item.id));
+      const oldStillResolved = data.purchases.some((item) =>
+        !changedIds.has(item.id) &&
+        item.fantasyTeamId === oldTeamId &&
+        item.role === data.auction.currentRole &&
+        item.choiceNumber === data.auction.choiceNumber &&
+        item.subRound === data.auction.subRound
+      );
+      const resolved = new Set(data.auction.resolvedTeamIds);
+      if (!oldStillResolved) resolved.delete(oldTeamId);
+      resolved.add(nextTeamId);
+      nextAuction = { ...data.auction, resolvedTeamIds: [...resolved] };
+      await saveAuctionState(nextAuction);
+    }
+
+    setData((current) => current ? {
+      ...current,
+      auction: nextAuction,
+      purchases: current.purchases.map((item) => changedPurchases.get(item.id) ?? item),
+      players: current.players.map((item) => changedPlayers.get(item.id) ?? item),
+    } : current);
+  };
   const addBid = async (bid: ObservedBid) => {
     await addObservedBid(bid);
     setData((current) => current ? { ...current, bids: [...current.bids, bid] } : current);
@@ -164,6 +218,7 @@ export function useAuctionData() {
     addPurchase,
     addPurchaseBundle,
     finalizePendingPrices,
+    editPurchase,
     addBid,
     removeBid,
     undoPurchase,
