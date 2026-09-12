@@ -9,6 +9,7 @@ export function purchasesByTeam(purchases: Purchase[]) {
 }
 
 export function purchaseBudgetImpact(purchase: Purchase) {
+  if (purchase.pricePending) return 0;
   return purchase.budgetImpact ?? purchase.price;
 }
 
@@ -49,6 +50,7 @@ export function teamSnapshot(team: FantasyTeam, players: Player[], purchases: Pu
   const counts = Object.fromEntries(
     (Object.keys(ROLE_LIMITS) as Role[]).map((role) => [role, roleCount(team.id, role, purchases)]),
   ) as Record<Role, number>;
+  const pendingPrices = purchases.filter((purchase) => purchase.fantasyTeamId === team.id && purchase.pricePending).length;
   return {
     ...team,
     spent,
@@ -56,6 +58,7 @@ export function teamSnapshot(team: FantasyTeam, players: Player[], purchases: Pu
     reserve,
     freeBudget: remaining - reserve,
     counts,
+    pendingPrices,
     totalPlayers: Object.values(counts).reduce((a, b) => a + b, 0),
   };
 }
@@ -73,23 +76,24 @@ const PRIOR_AGGRESSION: Record<PsychologyProfile, number> = {
 
 function purchaseRatioSamples(teamId: string | null, players: Player[], purchases: Purchase[]) {
   const playerMap = new Map(players.map((player) => [player.id, player]));
-  const relevant = purchases.filter((purchase) => teamId === null || purchase.fantasyTeamId === teamId);
+  const relevant = purchases.filter((purchase) => (teamId === null || purchase.fantasyTeamId === teamId));
   const bundled = new Map<string, Purchase[]>();
   const normal: Purchase[] = [];
   relevant.forEach((purchase) => {
     if (purchase.bundleId) bundled.set(purchase.bundleId, [...(bundled.get(purchase.bundleId) ?? []), purchase]);
-    else normal.push(purchase);
+    else if (!purchase.pricePending) normal.push(purchase);
   });
   const ratios = normal.map((purchase) => {
     const base = playerMap.get(purchase.playerId)?.basePrice ?? 0;
     return base > 0 ? purchaseBudgetImpact(purchase) / base : null;
   });
   bundled.forEach((group) => {
+    if (group.some((purchase) => purchase.pricePending)) return;
     const base = group.reduce((sum, purchase) => sum + (playerMap.get(purchase.playerId)?.basePrice ?? 0), 0);
     const paid = group.reduce((sum, purchase) => sum + purchaseBudgetImpact(purchase), 0);
     if (base > 0) ratios.push(paid / base);
   });
-  return ratios.filter((value): value is number => value !== null && Number.isFinite(value));
+  return ratios.filter((value): value is number => value !== null && Number.isFinite(value) && value > 0);
 }
 
 function ratioSamples(teamId: string | null, players: Player[], purchases: Purchase[], bids: ObservedBid[]) {
@@ -156,7 +160,7 @@ export interface FinalTeamReport {
 
 export function inferAuctionPersonality(team: FantasyTeam, players: Player[], purchases: Purchase[], bids: ObservedBid[]) {
   const behavior = observedBehavior(team, players, purchases, bids);
-  const teamPurchases = purchases.filter((purchase) => purchase.fantasyTeamId === team.id);
+  const teamPurchases = purchases.filter((purchase) => purchase.fantasyTeamId === team.id && !purchase.pricePending);
   const costs = teamPurchases.map(purchaseBudgetImpact).filter((value) => value > 0).sort((a, b) => b - a);
   const spent = costs.reduce((sum, value) => sum + value, 0);
   const topShare = spent > 0 ? costs.slice(0, 3).reduce((sum, value) => sum + value, 0) / spent : 0;
