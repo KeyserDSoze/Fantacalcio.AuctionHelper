@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, CheckCircle2, Coins, Crosshair, Package, RotateCcw, Search, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Coins, Crosshair, Package, ReceiptText, RotateCcw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { AppSnapshot, AuctionState, ObservedBid, Player, Purchase, Role } from "@/types";
@@ -36,12 +37,14 @@ export function AuctionPage({
   onPurchase,
   onPurchaseBundle,
   onBid,
+  onOpenPrices,
 }: {
   data: AppSnapshot;
   onAuction: (a: AuctionState) => Promise<void>;
   onPurchase: (purchase: Purchase, player: Player) => Promise<void>;
   onPurchaseBundle: (purchases: Purchase[], players: Player[]) => Promise<void>;
   onBid: (bid: ObservedBid) => Promise<void>;
+  onOpenPrices: () => void;
 }) {
   const [candidateSource, setCandidateSource] = useState<CandidateSource>("MY_LIST");
   const [teamId, setTeamId] = useState("soze-heaven");
@@ -55,6 +58,10 @@ export function AuctionPage({
   const [bidAmount, setBidAmount] = useState("");
   const [bidResult, setBidResult] = useState<ObservedBid["result"]>("LOST");
   const [bidError, setBidError] = useState("");
+  const [quickPlayerId, setQuickPlayerId] = useState("");
+  const [quickTeamId, setQuickTeamId] = useState("");
+  const [quickPrice, setQuickPrice] = useState("");
+  const [quickError, setQuickError] = useState("");
 
   const isClosed = Boolean(data.auction.closedAt);
   const packageMode = data.auction.currentRole === "P" && data.auction.goalkeeperMode === "PACKAGE";
@@ -70,16 +77,21 @@ export function AuctionPage({
   const selectedTeam = data.teams.find((team) => team.id === teamId)!;
   const selectedPlayer = data.players.find((player) => player.id === selectedPlayerId);
   const selectedBidPlayer = data.players.find((player) => player.id === bidPlayerId);
+  const quickPlayer = data.players.find((player) => player.id === quickPlayerId);
+  const quickTeam = data.teams.find((team) => team.id === quickTeamId);
   const selectedPackage = packageMode ? goalkeeperPackage(data.players, selectedPlayer) : [];
   const selectedBidPackage = packageMode ? goalkeeperPackage(data.players, selectedBidPlayer) : [];
+  const quickPackage = packageMode ? goalkeeperPackage(data.players, quickPlayer) : quickPlayer ? [quickPlayer] : [];
   const selectedMinPrice = packageMode ? selectedPackage.reduce((sum, player) => sum + player.basePrice, 0) : selectedPlayer?.basePrice ?? 1;
   const selectedBidMinPrice = packageMode ? selectedBidPackage.reduce((sum, player) => sum + player.basePrice, 0) : selectedBidPlayer?.basePrice ?? 1;
+  const quickMinPrice = quickPackage.reduce((sum, player) => sum + player.basePrice, 0);
   const rolePool = packageMode ? packageRepresentatives(data.players) : data.players.filter((player) => player.status === "AVAILABLE" && player.role === data.auction.currentRole);
   const availableSearch = rolePool.filter((player) => `${player.name} ${player.club}`.toLowerCase().includes(playerQuery.toLowerCase())).slice(0, 10);
   const bidPool = packageMode ? packageRepresentatives(data.players) : data.players.filter((player) => player.role === data.auction.currentRole);
   const bidSearch = bidPool.filter((player) => `${player.name} ${player.club}`.toLowerCase().includes(bidPlayerQuery.toLowerCase())).slice(0, 10);
   const maxChoice = packageMode ? 1 : ROLE_LIMITS[data.auction.currentRole];
   const recentBids = [...data.bids].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
+  const pendingPriceCount = data.purchases.filter((purchase) => purchase.pricePending).length;
 
   const setPhase = (role: Role, choice = 1) => void onAuction({ ...data.auction, currentRole: role, choiceNumber: choice, subRound: 1, resolvedTeamIds: [] });
   const nextSubRound = () => !isClosed && void onAuction({ ...data.auction, subRound: data.auction.subRound + 1 });
@@ -105,6 +117,78 @@ export function AuctionPage({
     setTeamId("soze-heaven");
     selectPlayer(player);
     setPrice(String(bid));
+  };
+
+  const openQuickAssign = (player: Player, suggestedTeamId?: string) => {
+    const firstActive = active.find((team) => team.id === suggestedTeamId) ?? active.find((team) => !team.isMe) ?? active[0];
+    setQuickPlayerId(player.id);
+    setQuickTeamId(firstActive?.id ?? "");
+    setQuickPrice("");
+    setQuickError("");
+  };
+
+  const closeQuickAssign = () => {
+    setQuickPlayerId("");
+    setQuickTeamId("");
+    setQuickPrice("");
+    setQuickError("");
+  };
+
+  const quickAssign = async () => {
+    setQuickError("");
+    if (isClosed) return setQuickError("L'asta è chiusa.");
+    if (!quickPlayer || !quickTeam) return setQuickError("Seleziona la squadra che ha preso il giocatore.");
+    if (packageMode && quickPackage.length !== 3) return setQuickError(`Il pacchetto ${quickPlayer.club} non ha 3 portieri disponibili.`);
+    const snap = teamSnapshot(quickTeam, data.players, data.purchases);
+    if (packageMode && snap.counts.P > 0) return setQuickError(`${quickTeam.name} ha già un portiere: in modalità pacchetto servono 3 slot liberi.`);
+    if (!packageMode && snap.counts[quickPlayer.role] >= ROLE_LIMITS[quickPlayer.role]) return setQuickError(`${quickTeam.name} non ha più slot liberi in questo reparto.`);
+
+    const hasPrice = quickPrice.trim() !== "";
+    const numericPrice = hasPrice ? Number(quickPrice) : 0;
+    if (hasPrice && (!Number.isFinite(numericPrice) || numericPrice < quickMinPrice)) return setQuickError(`Offerta minima FantaMaster: ${quickMinPrice} crediti.`);
+    if (hasPrice && numericPrice > snap.remaining) return setQuickError(`Budget insufficiente: ${snap.remaining} crediti rimasti.`);
+
+    const now = Date.now();
+    if (packageMode) {
+      const bundleId = `gk-${now}-${quickTeam.id}-${quickPlayer.club}`;
+      const bundleLabel = `Pacchetto ${quickPlayer.club}`;
+      const purchases: Purchase[] = quickPackage.map((player, index) => ({
+        id: `${bundleId}-${player.id}`,
+        playerId: player.id,
+        fantasyTeamId: quickTeam.id,
+        price: index === 0 ? numericPrice : 0,
+        budgetImpact: index === 0 ? numericPrice : 0,
+        pricePending: index === 0 ? !hasPrice : false,
+        bundleId,
+        bundleLabel,
+        role: "P",
+        choiceNumber: data.auction.choiceNumber,
+        subRound: data.auction.subRound,
+        timestamp: now + index,
+      }));
+      const updatedPlayers = quickPackage.map((player, index) => ({ ...player, status: "WON" as const, ownerId: quickTeam.id, purchasePrice: hasPrice ? (index === 0 ? numericPrice : 0) : undefined }));
+      await onPurchaseBundle(purchases, updatedPlayers);
+    } else {
+      const purchase: Purchase = {
+        id: `${now}-${quickPlayer.id}`,
+        playerId: quickPlayer.id,
+        fantasyTeamId: quickTeam.id,
+        price: numericPrice,
+        budgetImpact: numericPrice,
+        pricePending: !hasPrice,
+        role: quickPlayer.role,
+        choiceNumber: data.auction.choiceNumber,
+        subRound: data.auction.subRound,
+        timestamp: now,
+      };
+      const updatedPlayer: Player = { ...quickPlayer, status: "WON", ownerId: quickTeam.id, purchasePrice: hasPrice ? numericPrice : undefined };
+      await onPurchase(purchase, updatedPlayer);
+    }
+
+    if (quickPlayer.role === data.auction.currentRole && activeIds.has(quickTeam.id)) {
+      await onAuction({ ...data.auction, resolvedTeamIds: Array.from(new Set([...data.auction.resolvedTeamIds, quickTeam.id])) });
+    }
+    closeQuickAssign();
   };
 
   const register = async () => {
@@ -175,7 +259,10 @@ export function AuctionPage({
   return <div className="space-y-4 sm:space-y-6">
     <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
       <div><h1 className="text-2xl font-bold sm:text-3xl">Gestione asta</h1><p className="mt-1 text-sm text-muted-foreground sm:text-base">Basket dinamico, prezzi previsti e modello che impara dalle buste reali.</p></div>
-      <div className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap">{(["P","D","C","A"] as Role[]).map((role) => <Button className="min-w-0 px-2 sm:px-4" key={role} disabled={isClosed} variant={data.auction.currentRole === role ? "default" : "outline"} onClick={() => setPhase(role)}><span className="sm:hidden">{role}</span><span className="hidden sm:inline">{role} · {ROLE_LABELS[role]}</span></Button>)}</div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        {pendingPriceCount > 0 && <Button variant="outline" className="min-h-11" onClick={onOpenPrices}><ReceiptText className="h-4 w-4" />Prezzi mancanti <Badge className="ml-1">{pendingPriceCount}</Badge></Button>}
+        <div className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap">{(["P","D","C","A"] as Role[]).map((role) => <Button className="min-w-0 px-2 sm:px-4" key={role} disabled={isClosed} variant={data.auction.currentRole === role ? "default" : "outline"} onClick={() => setPhase(role)}><span className="sm:hidden">{role}</span><span className="hidden sm:inline">{role} · {ROLE_LABELS[role]}</span></Button>)}</div>
+      </div>
     </div>
 
     {isClosed && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-600 sm:p-4"><strong>Asta chiusa.</strong> La gestione è in sola lettura. Puoi riaprirla dal Report finale.</div>}
@@ -218,7 +305,10 @@ export function AuctionPage({
                 <div className="mt-3 grid gap-3 sm:mt-4 lg:grid-cols-[1fr_1.35fr_auto] lg:items-end">
                   <div><div className="mb-1 flex justify-between text-xs"><span>Probabilità di successo</span><span>{Math.round(candidate.winProbability * 100)}%</span></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{width:`${clamp(candidate.winProbability) * 100}%`}} /></div><div className="mt-2 text-xs text-muted-foreground">{candidate.reason}</div></div>
                   <div><div className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground sm:text-xs">Chi può chiamarlo · probabilità · prezzo</div><div className="flex flex-wrap gap-1.5 sm:gap-2">{candidate.contenders.length ? candidate.contenders.slice(0,6).map((contender) => <Badge key={contender.team.id} className="max-w-full text-[10px] sm:text-xs">{contender.team.name} · {Math.round(contender.probability * 100)}% · ~{contender.expectedBid}</Badge>) : <span className="text-xs text-muted-foreground">Nessun avversario con probabilità rilevante.</span>}</div></div>
-                  <Button className="w-full lg:w-auto" size="sm" onClick={() => useCandidate(candidate.player, candidate.winBid)}><Crosshair className="h-4 w-4" />Usa {candidate.winBid}</Button>
+                  <div className="grid grid-cols-2 gap-2 lg:flex lg:flex-col">
+                    <Button variant="outline" size="sm" onClick={() => openQuickAssign(candidate.player, candidate.contenders[0]?.team.id)}><CheckCircle2 className="h-4 w-4" />Segna preso</Button>
+                    <Button size="sm" onClick={() => useCandidate(candidate.player, candidate.winBid)}><Crosshair className="h-4 w-4" />Usa {candidate.winBid}</Button>
+                  </div>
                 </div>
               </div>;
             })}
@@ -250,11 +340,25 @@ export function AuctionPage({
           {!!recentBids.length && <div className="space-y-1 border-t pt-3">{recentBids.map((bid) => { const player = data.players.find((item) => item.id === bid.playerId); const team = data.teams.find((item) => item.id === bid.fantasyTeamId); return <div key={bid.id} className="flex justify-between gap-2 text-xs text-muted-foreground"><span className="min-w-0 truncate">{team?.name} · {player?.name} · {bid.result === "TIED" ? "pari" : "persa"}</span><strong className="shrink-0 text-foreground">{bid.amount}</strong></div>; })}</div>}
         </CardContent></Card>
 
-        <Card><CardHeader><CardTitle>Stato squadre</CardTitle></CardHeader><CardContent className="space-y-2">{snapshots.map((team) => <div key={team.id} className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${activeIds.has(team.id) ? "border-primary/30 bg-primary/5" : "opacity-65"}`}><div className="min-w-0"><div className="truncate text-sm font-semibold">{team.name}</div><div className="text-xs text-muted-foreground">{activeIds.has(team.id) ? "Ancora attivo" : "Risolto / fuori fase"}</div></div><div className="flex shrink-0 items-center gap-2"><Coins className="h-4 w-4 text-muted-foreground" /><span className="font-bold tabular">{money(team.remaining)}</span></div></div>)}</CardContent></Card>
+        <Card><CardHeader><CardTitle>Stato squadre</CardTitle></CardHeader><CardContent className="space-y-2">{snapshots.map((team) => <div key={team.id} className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${activeIds.has(team.id) ? "border-primary/30 bg-primary/5" : "opacity-65"}`}><div className="min-w-0"><div className="truncate text-sm font-semibold">{team.name}</div><div className="text-xs text-muted-foreground">{activeIds.has(team.id) ? "Ancora attivo" : "Risolto / fuori fase"}{team.pendingPrices ? ` · ${team.pendingPrices} prezzo/i mancanti` : ""}</div></div><div className="flex shrink-0 items-center gap-2"><Coins className="h-4 w-4 text-muted-foreground" /><span className="font-bold tabular">{money(team.remaining)}</span></div></div>)}</CardContent></Card>
 
         <Card><CardHeader><CardTitle>Controlli tornata</CardTitle></CardHeader><CardContent className="space-y-2"><Button variant="outline" className="min-h-11 w-full justify-between" disabled={isClosed} onClick={nextSubRound}>Nuovo sottoround <RotateCcw className="h-4 w-4" /></Button><Button className="min-h-11 w-full justify-between" disabled={isClosed || data.auction.choiceNumber >= maxChoice} onClick={nextChoice}>Prossima scelta <ArrowRight className="h-4 w-4" /></Button><div className="pt-2 text-xs text-muted-foreground">Il nuovo sottoround mantiene fuori le squadre già risolte. La prossima scelta riattiva tutte le squadre che hanno ancora slot nel reparto.</div></CardContent></Card>
       </div>
     </div>
+
+    <Dialog open={Boolean(quickPlayerId)} onOpenChange={(open) => { if (!open) closeQuickAssign(); }}>
+      <DialogContent className="max-w-lg p-4 sm:p-6">
+        <DialogTitle className="text-xl font-bold">Segna giocatore preso</DialogTitle>
+        <DialogDescription>Assegna subito il giocatore alla squadra corretta. Il prezzo è opzionale e puoi completarlo più tardi nella tabella dedicata.</DialogDescription>
+        {quickPlayer && <div className="mt-4 rounded-xl border bg-muted/30 p-3"><div className="font-bold">{packageMode ? `Pacchetto ${quickPlayer.club}` : quickPlayer.name}</div><div className="mt-1 text-xs text-muted-foreground">{quickPlayer.club} · {ROLE_LABELS[quickPlayer.role]} · minimo {quickMinPrice}</div></div>}
+        <div className="mt-4 space-y-4">
+          <div><div className="mb-1.5 text-sm font-medium">Chi l'ha preso?</div><Select className="w-full" value={quickTeamId} onChange={(event) => setQuickTeamId(event.target.value)}>{active.map((team) => { const snap = snapshots.find((item) => item.id === team.id); return <option key={team.id} value={team.id}>{team.name} · {snap?.remaining ?? team.initialBudget} cr.</option>; })}</Select></div>
+          <div><div className="mb-1.5 text-sm font-medium">Prezzo <span className="font-normal text-muted-foreground">(opzionale)</span></div><Input className="h-12 text-lg font-bold tabular" type="number" inputMode="numeric" min={quickMinPrice} value={quickPrice} onChange={(event) => setQuickPrice(event.target.value)} placeholder="Lascia vuoto e completa dopo" /><div className="mt-1 text-xs text-muted-foreground">Se lo lasci vuoto, il giocatore viene assegnato subito ma il budget non cambia finché non inserisci il prezzo reale.</div></div>
+          {quickError && <div className="flex gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500"><AlertTriangle className="h-4 w-4 shrink-0" />{quickError}</div>}
+          <div className="grid grid-cols-2 gap-2"><Button variant="outline" onClick={closeQuickAssign}>Annulla</Button><Button onClick={() => void quickAssign()}><CheckCircle2 className="h-4 w-4" />{quickPrice.trim() ? "Assegna" : "Assegna senza prezzo"}</Button></div>
+        </div>
+      </DialogContent>
+    </Dialog>
   </div>;
 }
 
