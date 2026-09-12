@@ -1,6 +1,7 @@
 import { openDB, type DBSchema } from "idb";
 import type { AuctionState, FantasyTeam, ObservedBid, Player, Purchase, SerieAClub } from "@/types";
 import { DEFAULT_AUCTION, DEFAULT_TEAMS } from "@/lib/defaults";
+import { buildDefaultCatalog } from "@/data/defaultCatalog";
 
 interface AuctionDB extends DBSchema {
   players: {
@@ -68,6 +69,20 @@ export async function getDb() {
     await Promise.all(DEFAULT_TEAMS.map((team) => tx.store.put(team)));
     await tx.done;
   }
+
+  if ((await db.count("players")) === 0) {
+    const defaults = buildDefaultCatalog();
+    const existingClubs = await db.getAll("clubs");
+    const existingClubMap = new Map(existingClubs.map((club) => [club.id, club]));
+    const tx = db.transaction(["players", "clubs"], "readwrite");
+    for (const player of defaults.players) await tx.objectStore("players").put(player);
+    for (const club of defaults.clubs) {
+      const existing = existingClubMap.get(club.id);
+      await tx.objectStore("clubs").put(existing ? { ...club, tier: existing.tier } : club);
+    }
+    await tx.done;
+  }
+
   if (!(await db.get("state", "auction"))) await db.put("state", DEFAULT_AUCTION);
   return db;
 }
