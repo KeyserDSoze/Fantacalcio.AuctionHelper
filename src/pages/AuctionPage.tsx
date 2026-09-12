@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { AppSnapshot, AuctionState, ObservedBid, Player, Purchase, Role } from "@/types";
 import { ROLE_LABELS, ROLE_LIMITS } from "@/types";
-import { activeTeamsForState, getSozeCandidates, predictOpponentTargets, type CandidateSource } from "@/lib/strategy";
+import { activeTeamsForState, getSozeCandidates, MIN_GOALKEEPERS_PER_PACKAGE, predictOpponentTargets, type CandidateSource } from "@/lib/strategy";
 import { observedBehavior, teamSnapshot } from "@/lib/analytics";
 import { clamp, money } from "@/lib/utils";
 
@@ -26,7 +26,7 @@ function packageRepresentatives(players: Player[]) {
     byClub.set(player.club, [...(byClub.get(player.club) ?? []), player]);
   });
   return [...byClub.values()]
-    .filter((group) => group.length >= 3)
+    .filter((group) => group.length >= MIN_GOALKEEPERS_PER_PACKAGE)
     .map((group) => [...group].sort((a, b) => b.basePrice - a.basePrice)[0])
     .filter((player): player is Player => Boolean(player));
 }
@@ -138,9 +138,10 @@ export function AuctionPage({
     setQuickError("");
     if (isClosed) return setQuickError("L'asta è chiusa.");
     if (!quickPlayer || !quickTeam) return setQuickError("Seleziona la squadra che ha preso il giocatore.");
-    if (packageMode && quickPackage.length !== 3) return setQuickError(`Il pacchetto ${quickPlayer.club} non ha 3 portieri disponibili.`);
+    if (packageMode && quickPackage.length < MIN_GOALKEEPERS_PER_PACKAGE) return setQuickError(`Il pacchetto ${quickPlayer.club} deve avere almeno ${MIN_GOALKEEPERS_PER_PACKAGE} portieri disponibili.`);
     const snap = teamSnapshot(quickTeam, data.players, data.purchases);
-    if (packageMode && snap.counts.P > 0) return setQuickError(`${quickTeam.name} ha già un portiere: in modalità pacchetto servono 3 slot liberi.`);
+    const freeGoalkeeperSlots = ROLE_LIMITS.P - snap.counts.P;
+    if (packageMode && freeGoalkeeperSlots < quickPackage.length) return setQuickError(`${quickTeam.name} ha ${freeGoalkeeperSlots} slot portiere liberi, ma il pacchetto ne contiene ${quickPackage.length}.`);
     if (!packageMode && snap.counts[quickPlayer.role] >= ROLE_LIMITS[quickPlayer.role]) return setQuickError(`${quickTeam.name} non ha più slot liberi in questo reparto.`);
 
     const hasPrice = quickPrice.trim() !== "";
@@ -196,11 +197,12 @@ export function AuctionPage({
     if (isClosed) return setError("L'asta è chiusa. Riaprila dal Report finale per fare modifiche.");
     if (!selectedPlayer || !selectedTeam) return setError("Seleziona squadra e giocatore.");
     const numericPrice = Number(price);
-    if (packageMode && selectedPackage.length !== 3) return setError(`Il pacchetto ${selectedPlayer.club} non ha 3 portieri disponibili.`);
+    if (packageMode && selectedPackage.length < MIN_GOALKEEPERS_PER_PACKAGE) return setError(`Il pacchetto ${selectedPlayer.club} deve avere almeno ${MIN_GOALKEEPERS_PER_PACKAGE} portieri disponibili.`);
     if (!numericPrice || numericPrice < selectedMinPrice) return setError(`Offerta minima: ${selectedMinPrice} crediti.`);
     const snap = teamSnapshot(selectedTeam, data.players, data.purchases);
     if (numericPrice > snap.remaining) return setError(`Budget insufficiente: ${snap.remaining} crediti rimasti.`);
-    if (packageMode && snap.counts.P > 0) return setError(`${selectedTeam.name} ha già un portiere: in modalità pacchetto servono 3 slot liberi.`);
+    const freeGoalkeeperSlots = ROLE_LIMITS.P - snap.counts.P;
+    if (packageMode && freeGoalkeeperSlots < selectedPackage.length) return setError(`${selectedTeam.name} ha ${freeGoalkeeperSlots} slot portiere liberi, ma il pacchetto ne contiene ${selectedPackage.length}.`);
 
     const now = Date.now();
     if (packageMode) {
@@ -239,7 +241,7 @@ export function AuctionPage({
     const team = data.teams.find((item) => item.id === bidTeamId);
     if (!selectedBidPlayer || !team) return setBidError("Seleziona squadra e giocatore.");
     const amount = Number(bidAmount);
-    if (packageMode && selectedBidPackage.length !== 3) return setBidError(`Il pacchetto ${selectedBidPlayer.club} non ha 3 portieri disponibili.`);
+    if (packageMode && selectedBidPackage.length < MIN_GOALKEEPERS_PER_PACKAGE) return setBidError(`Il pacchetto ${selectedBidPlayer.club} deve avere almeno ${MIN_GOALKEEPERS_PER_PACKAGE} portieri disponibili.`);
     if (!amount || amount < selectedBidMinPrice) return setBidError(`Offerta minima: ${selectedBidMinPrice} crediti.`);
     await onBid({
       id: `bid-${Date.now()}-${team.id}-${selectedBidPlayer.id}`,
@@ -267,7 +269,7 @@ export function AuctionPage({
 
     {isClosed && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-600 sm:p-4"><strong>Asta chiusa.</strong> La gestione è in sola lettura. Puoi riaprirla dal Report finale.</div>}
 
-    {data.auction.currentRole === "P" && <Card className="border-primary/30"><CardContent className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between sm:p-5"><div className="flex items-start gap-3"><Package className="mt-0.5 h-5 w-5 shrink-0 text-primary" /><div><div className="font-semibold">Modalità asta portieri</div><div className="text-xs text-muted-foreground sm:text-sm">Sceglila prima del primo acquisto. Nel pacchetto entrano insieme i 3 portieri con quotazione più alta della squadra.</div></div></div><Select className="w-full md:w-64" value={data.auction.goalkeeperMode} disabled={hasGoalkeeperPurchases || isClosed} onChange={(event) => void onAuction({ ...data.auction, goalkeeperMode: event.target.value as AuctionState["goalkeeperMode"], choiceNumber: 1, subRound: 1, resolvedTeamIds: [] })}><option value="INDIVIDUAL">3 aste · portieri singoli</option><option value="PACKAGE">1 asta · pacchetto squadra</option></Select></CardContent></Card>}
+    {data.auction.currentRole === "P" && <Card className="border-primary/30"><CardContent className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between sm:p-5"><div className="flex items-start gap-3"><Package className="mt-0.5 h-5 w-5 shrink-0 text-primary" /><div><div className="font-semibold">Modalità asta portieri</div><div className="text-xs text-muted-foreground sm:text-sm">Sceglila prima del primo acquisto. Un pacchetto è valido con almeno 2 portieri disponibili e include fino ai 3 con quotazione più alta della squadra.</div></div></div><Select className="w-full md:w-64" value={data.auction.goalkeeperMode} disabled={hasGoalkeeperPurchases || isClosed} onChange={(event) => void onAuction({ ...data.auction, goalkeeperMode: event.target.value as AuctionState["goalkeeperMode"], choiceNumber: 1, subRound: 1, resolvedTeamIds: [] })}><option value="INDIVIDUAL">3 aste · portieri singoli</option><option value="PACKAGE">1 asta · pacchetto squadra</option></Select></CardContent></Card>}
 
     <div className="grid grid-cols-3 gap-2 sm:gap-4">
       <Card><CardContent className="p-3 sm:p-5"><div className="text-[10px] uppercase text-muted-foreground sm:text-xs">Fase</div><div className="mt-1 truncate text-base font-bold sm:text-2xl">{ROLE_LABELS[data.auction.currentRole]}</div></CardContent></Card>
@@ -326,7 +328,7 @@ export function AuctionPage({
           <div><div className="mb-1.5 text-sm font-medium">Squadra</div><Select className="w-full" value={teamId} disabled={isClosed} onChange={(event) => setTeamId(event.target.value)}>{snapshots.map((team) => <option value={team.id} key={team.id}>{team.name} · {team.remaining} cr.</option>)}</Select></div>
           <div><div className="mb-1.5 text-sm font-medium">{packageMode ? "Squadra Serie A" : "Giocatore"}</div><div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="pl-9" disabled={isClosed} value={selectedPlayer ? (packageMode ? `Pacchetto ${selectedPlayer.club}` : selectedPlayer.name) : playerQuery} onChange={(event) => { setSelectedPlayerId(""); setPlayerQuery(event.target.value); }} placeholder={packageMode ? "Cerca squadra o portiere…" : "Cerca tra i giocatori liberi…"} />{!selectedPlayerId && playerQuery && <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border bg-background p-1 shadow-xl">{availableSearch.map((player) => { const pack = packageMode ? goalkeeperPackage(data.players, player) : [player]; const base = pack.reduce((sum, item) => sum + item.basePrice, 0); return <button key={player.id} className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => selectPlayer(player)}><span className="min-w-0 truncate"><strong>{packageMode ? `Pacchetto ${player.club}` : player.name}</strong> <span className="text-muted-foreground">· {packageMode ? pack.map((item) => item.name).join(", ") : player.club}</span></span><Badge className="shrink-0">{player.role} · {base}</Badge></button> })}</div>}</div></div>
           <div><div className="mb-1.5 text-sm font-medium">Prezzo</div><Input type="number" inputMode="numeric" disabled={isClosed} min={selectedMinPrice} value={price} onChange={(event) => setPrice(event.target.value)} /></div>
-          {selectedPlayer && <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">Minimo FantaMaster: <strong className="text-foreground">{selectedMinPrice}</strong>. {packageMode && <span>Dentro: <strong className="text-foreground">{selectedPackage.map((player) => player.name).join(", ")}</strong>. </span>}Budget {selectedTeam.name}: <strong className="text-foreground">{teamSnapshot(selectedTeam,data.players,data.purchases).remaining}</strong>.</div>}
+          {selectedPlayer && <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">Minimo FantaMaster: <strong className="text-foreground">{selectedMinPrice}</strong>. {packageMode && <span>Dentro ({selectedPackage.length}): <strong className="text-foreground">{selectedPackage.map((player) => player.name).join(", ")}</strong>. </span>}Budget {selectedTeam.name}: <strong className="text-foreground">{teamSnapshot(selectedTeam,data.players,data.purchases).remaining}</strong>.</div>}
           {error && <div className="flex gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500"><AlertTriangle className="h-4 w-4 shrink-0" />{error}</div>}
           <Button className="min-h-11 w-full" disabled={isClosed} onClick={() => void register()}><CheckCircle2 className="h-4 w-4" />{packageMode ? "Assegna pacchetto" : "Assegna giocatore"}</Button>
         </CardContent></Card>
@@ -350,7 +352,7 @@ export function AuctionPage({
       <DialogContent className="max-w-lg p-4 sm:p-6">
         <DialogTitle className="text-xl font-bold">Segna giocatore preso</DialogTitle>
         <DialogDescription>Assegna subito il giocatore alla squadra corretta. Il prezzo è opzionale e puoi completarlo più tardi nella tabella dedicata.</DialogDescription>
-        {quickPlayer && <div className="mt-4 rounded-xl border bg-muted/30 p-3"><div className="font-bold">{packageMode ? `Pacchetto ${quickPlayer.club}` : quickPlayer.name}</div><div className="mt-1 text-xs text-muted-foreground">{quickPlayer.club} · {ROLE_LABELS[quickPlayer.role]} · minimo {quickMinPrice}</div></div>}
+        {quickPlayer && <div className="mt-4 rounded-xl border bg-muted/30 p-3"><div className="font-bold">{packageMode ? `Pacchetto ${quickPlayer.club}` : quickPlayer.name}</div><div className="mt-1 text-xs text-muted-foreground">{quickPlayer.club} · {ROLE_LABELS[quickPlayer.role]} · {packageMode ? `${quickPackage.length} portieri · ` : ""}minimo {quickMinPrice}</div></div>}
         <div className="mt-4 space-y-4">
           <div><div className="mb-1.5 text-sm font-medium">Chi l'ha preso?</div><Select className="w-full" value={quickTeamId} onChange={(event) => setQuickTeamId(event.target.value)}>{active.map((team) => { const snap = snapshots.find((item) => item.id === team.id); return <option key={team.id} value={team.id}>{team.name} · {snap?.remaining ?? team.initialBudget} cr.</option>; })}</Select></div>
           <div><div className="mb-1.5 text-sm font-medium">Prezzo <span className="font-normal text-muted-foreground">(opzionale)</span></div><Input className="h-12 text-lg font-bold tabular" type="number" inputMode="numeric" min={quickMinPrice} value={quickPrice} onChange={(event) => setQuickPrice(event.target.value)} placeholder="Lascia vuoto e completa dopo" /><div className="mt-1 text-xs text-muted-foreground">Se lo lasci vuoto, il giocatore viene assegnato subito ma il budget non cambia finché non inserisci il prezzo reale.</div></div>
