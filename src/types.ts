@@ -52,6 +52,18 @@ export interface Purchase {
   timestamp: number;
 }
 
+export interface ObservedBid {
+  id: string;
+  playerId: string;
+  fantasyTeamId: string;
+  amount: number;
+  result: "LOST" | "TIED";
+  role: Role;
+  choiceNumber: number;
+  subRound: number;
+  timestamp: number;
+}
+
 export interface AuctionState {
   key: "auction";
   currentRole: Role;
@@ -65,6 +77,7 @@ export interface AppSnapshot {
   clubs: SerieAClub[];
   teams: FantasyTeam[];
   purchases: Purchase[];
+  bids: ObservedBid[];
   auction: AuctionState;
 }
 
