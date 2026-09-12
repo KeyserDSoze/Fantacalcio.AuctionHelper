@@ -5,6 +5,9 @@ import { getRemainingBudget, minimumCompletionCost, missingByRole, observedBehav
 
 export type CandidateSource = "MY_LIST" | "TOP9";
 
+export const MIN_GOALKEEPERS_PER_PACKAGE = 2;
+export const MAX_GOALKEEPERS_PER_PACKAGE = 3;
+
 export interface OpponentTarget {
   teamId: string;
   playerId: string;
@@ -45,7 +48,7 @@ export function goalkeeperPackage(players: Player[], anchor?: Player) {
   return players
     .filter((player) => player.status === "AVAILABLE" && player.role === "P" && player.club === anchor.club)
     .sort((a, b) => b.basePrice - a.basePrice)
-    .slice(0, 3);
+    .slice(0, MAX_GOALKEEPERS_PER_PACKAGE);
 }
 
 export function auctionPool(players: Player[], auction: AuctionState) {
@@ -54,7 +57,7 @@ export function auctionPool(players: Player[], auction: AuctionState) {
   const byClub = new Map<string, Player[]>();
   available.forEach((player) => byClub.set(player.club, [...(byClub.get(player.club) ?? []), player]));
   return [...byClub.values()]
-    .filter((group) => group.length >= 3)
+    .filter((group) => group.length >= MIN_GOALKEEPERS_PER_PACKAGE)
     .map((group) => [...group].sort((a, b) => b.basePrice - a.basePrice)[0]);
 }
 
@@ -127,7 +130,7 @@ function roleMarketMultiplier(role: Role, players: Player[], purchases: Purchase
 function releasedReserve(teamId: string, role: Role, players: Player[], purchases: Purchase[], auction: AuctionState) {
   const missing = missingByRole(teamId, role, purchases);
   if (missing <= 0) return 0;
-  const count = role === "P" && auction.goalkeeperMode === "PACKAGE" ? Math.min(3, missing) : 1;
+  const count = role === "P" && auction.goalkeeperMode === "PACKAGE" ? Math.min(MAX_GOALKEEPERS_PER_PACKAGE, missing) : 1;
   return players
     .filter((player) => player.status === "AVAILABLE" && player.role === role)
     .map((player) => player.basePrice)
@@ -155,7 +158,9 @@ function rawOpponentScore(
 ) {
   const remaining = getRemainingBudget(team, purchases);
   const targetPrice = effectiveBasePrice(player, allPlayers, auction);
-  if (remaining < targetPrice || missingByRole(team.id, player.role, purchases) <= 0) return 0;
+  const missing = missingByRole(team.id, player.role, purchases);
+  if (remaining < targetPrice || missing <= 0) return 0;
+  if (player.role === "P" && auction.goalkeeperMode === "PACKAGE" && missing < MIN_GOALKEEPERS_PER_PACKAGE) return 0;
 
   const qualityP = percentile(player, pool, allPlayers, auction);
   const clubP = clubPower(player, clubs);
@@ -198,9 +203,12 @@ function expectedOpponentBid(
 }
 
 export function activeTeamsForState(teams: FantasyTeam[], purchases: Purchase[], auction: AuctionState) {
-  return teams.filter(
-    (team) => !auction.resolvedTeamIds.includes(team.id) && missingByRole(team.id, auction.currentRole, purchases) > 0,
-  );
+  return teams.filter((team) => {
+    if (auction.resolvedTeamIds.includes(team.id)) return false;
+    const missing = missingByRole(team.id, auction.currentRole, purchases);
+    if (auction.currentRole === "P" && auction.goalkeeperMode === "PACKAGE") return missing >= MIN_GOALKEEPERS_PER_PACKAGE;
+    return missing > 0;
+  });
 }
 
 export function predictOpponentTargets(
