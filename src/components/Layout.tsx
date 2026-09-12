@@ -1,14 +1,15 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { BarChart3, Database, Gavel, History, Menu, Moon, Shield, Sun, Target, Users, X } from "lucide-react";
+import { BarChart3, Database, Gavel, History, Menu, Moon, Shield, Sparkles, Sun, Target, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export type PageKey = "dashboard" | "auction" | "market" | "players" | "clubs" | "opponents" | "data";
+export type PageKey = "dashboard" | "auction" | "market" | "report" | "players" | "clubs" | "opponents" | "data";
 
 const items: { key: PageKey; label: string; icon: typeof BarChart3; group: string }[] = [
   { key: "dashboard", label: "Dashboard", icon: BarChart3, group: "Asta" },
   { key: "auction", label: "Gestione asta", icon: Gavel, group: "Asta" },
   { key: "market", label: "Mercato & storico", icon: History, group: "Asta" },
+  { key: "report", label: "Report finale", icon: Sparkles, group: "Asta" },
   { key: "players", label: "Giocatori", icon: Target, group: "Amministrazione" },
   { key: "clubs", label: "Tier Serie A", icon: Shield, group: "Amministrazione" },
   { key: "opponents", label: "Avversari", icon: Users, group: "Amministrazione" },
@@ -34,7 +35,7 @@ export function Layout({ page, onPage, children }: { page: PageKey; onPage: (p: 
           <div key={group}>
             <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{group}</div>
             <div className="space-y-1">
-              {items.filter((i) => i.group === group).map(({ key, label, icon: Icon }) => (
+              {items.filter((item) => item.group === group).map(({ key, label, icon: Icon }) => (
                 <button key={key} onClick={() => { onPage(key); setMobileOpen(false); }} className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition", page === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground")}>
                   <Icon className="h-4 w-4" />{label}
                 </button>
@@ -43,7 +44,7 @@ export function Layout({ page, onPage, children }: { page: PageKey; onPage: (p: 
           </div>
         ))}
       </nav>
-      <div className="border-t p-3"><Button variant="ghost" className="w-full justify-start" onClick={() => setDark((v) => !v)}>{dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}{dark ? "Tema chiaro" : "Tema scuro"}</Button></div>
+      <div className="border-t p-3"><Button variant="ghost" className="w-full justify-start" onClick={() => setDark((value) => !value)}>{dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}{dark ? "Tema chiaro" : "Tema scuro"}</Button></div>
     </div>
   );
 
