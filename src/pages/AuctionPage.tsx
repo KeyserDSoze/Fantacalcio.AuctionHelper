@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { RosterModal } from "@/components/RosterModal";
 import type { AppSnapshot, AuctionState, ObservedBid, Player, Purchase, Role } from "@/types";
 import { ROLE_LABELS, ROLE_LIMITS } from "@/types";
 import { activeTeamsForState, getSozeCandidates, MIN_GOALKEEPERS_PER_PACKAGE, predictOpponentTargets, type CandidateSource } from "@/lib/strategy";
@@ -38,6 +39,8 @@ export function AuctionPage({
   onPurchaseBundle,
   onBid,
   onOpenPrices,
+  onEditPurchase,
+  onUndoPurchase,
 }: {
   data: AppSnapshot;
   onAuction: (a: AuctionState) => Promise<void>;
@@ -45,6 +48,8 @@ export function AuctionPage({
   onPurchaseBundle: (purchases: Purchase[], players: Player[]) => Promise<void>;
   onBid: (bid: ObservedBid) => Promise<void>;
   onOpenPrices: () => void;
+  onEditPurchase: (purchase: Purchase, nextTeamId: string, amount: number | null) => Promise<void>;
+  onUndoPurchase: (purchase: Purchase) => Promise<void>;
 }) {
   const [candidateSource, setCandidateSource] = useState<CandidateSource>("MY_LIST");
   const [teamId, setTeamId] = useState("soze-heaven");
@@ -62,6 +67,7 @@ export function AuctionPage({
   const [quickTeamId, setQuickTeamId] = useState("");
   const [quickPrice, setQuickPrice] = useState("");
   const [quickError, setQuickError] = useState("");
+  const [rosterTeamId, setRosterTeamId] = useState("");
 
   const isClosed = Boolean(data.auction.closedAt);
   const packageMode = data.auction.currentRole === "P" && data.auction.goalkeeperMode === "PACKAGE";
@@ -262,6 +268,7 @@ export function AuctionPage({
     <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
       <div><h1 className="text-2xl font-bold sm:text-3xl">Gestione asta</h1><p className="mt-1 text-sm text-muted-foreground sm:text-base">Basket dinamico, prezzi previsti e modello che impara dalle buste reali.</p></div>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <Button variant="outline" className="min-h-11" onClick={() => setRosterTeamId("soze-heaven")}>La mia rosa</Button>
         {pendingPriceCount > 0 && <Button variant="outline" className="min-h-11" onClick={onOpenPrices}><ReceiptText className="h-4 w-4" />Prezzi mancanti <Badge className="ml-1">{pendingPriceCount}</Badge></Button>}
         <div className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap">{(["P","D","C","A"] as Role[]).map((role) => <Button className="min-w-0 px-2 sm:px-4" key={role} disabled={isClosed} variant={data.auction.currentRole === role ? "default" : "outline"} onClick={() => setPhase(role)}><span className="sm:hidden">{role}</span><span className="hidden sm:inline">{role} · {ROLE_LABELS[role]}</span></Button>)}</div>
       </div>
@@ -342,11 +349,13 @@ export function AuctionPage({
           {!!recentBids.length && <div className="space-y-1 border-t pt-3">{recentBids.map((bid) => { const player = data.players.find((item) => item.id === bid.playerId); const team = data.teams.find((item) => item.id === bid.fantasyTeamId); return <div key={bid.id} className="flex justify-between gap-2 text-xs text-muted-foreground"><span className="min-w-0 truncate">{team?.name} · {player?.name} · {bid.result === "TIED" ? "pari" : "persa"}</span><strong className="shrink-0 text-foreground">{bid.amount}</strong></div>; })}</div>}
         </CardContent></Card>
 
-        <Card><CardHeader><CardTitle>Stato squadre</CardTitle></CardHeader><CardContent className="space-y-2">{snapshots.map((team) => <div key={team.id} className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${activeIds.has(team.id) ? "border-primary/30 bg-primary/5" : "opacity-65"}`}><div className="min-w-0"><div className="truncate text-sm font-semibold">{team.name}</div><div className="text-xs text-muted-foreground">{activeIds.has(team.id) ? "Ancora attivo" : "Risolto / fuori fase"}{team.pendingPrices ? ` · ${team.pendingPrices} prezzo/i mancanti` : ""}</div></div><div className="flex shrink-0 items-center gap-2"><Coins className="h-4 w-4 text-muted-foreground" /><span className="font-bold tabular">{money(team.remaining)}</span></div></div>)}</CardContent></Card>
+        <Card><CardHeader><CardTitle>Stato squadre</CardTitle></CardHeader><CardContent className="space-y-2">{snapshots.map((team) => <button type="button" key={team.id} onClick={() => setRosterTeamId(team.id)} className={`flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border p-3 text-left transition hover:border-primary/50 hover:bg-accent/40 ${activeIds.has(team.id) ? "border-primary/30 bg-primary/5" : "opacity-75"}`}><div className="min-w-0"><div className="truncate text-sm font-semibold">{team.name}{team.isMe ? " · NOI" : ""}</div><div className="text-xs text-muted-foreground">{activeIds.has(team.id) ? "Ancora attivo" : "Risolto / fuori fase"}{team.pendingPrices ? ` · ${team.pendingPrices} prezzo/i mancanti` : ""} · clicca per la rosa</div></div><div className="flex shrink-0 items-center gap-2"><Coins className="h-4 w-4 text-muted-foreground" /><span className="font-bold tabular">{money(team.remaining)}</span></div></button>)}</CardContent></Card>
 
         <Card><CardHeader><CardTitle>Controlli tornata</CardTitle></CardHeader><CardContent className="space-y-2"><Button variant="outline" className="min-h-11 w-full justify-between" disabled={isClosed} onClick={nextSubRound}>Nuovo sottoround <RotateCcw className="h-4 w-4" /></Button><Button className="min-h-11 w-full justify-between" disabled={isClosed || data.auction.choiceNumber >= maxChoice} onClick={nextChoice}>Prossima scelta <ArrowRight className="h-4 w-4" /></Button><div className="pt-2 text-xs text-muted-foreground">Il nuovo sottoround mantiene fuori le squadre già risolte. La prossima scelta riattiva tutte le squadre che hanno ancora slot nel reparto.</div></CardContent></Card>
       </div>
     </div>
+
+    <RosterModal data={data} teamId={rosterTeamId} onOpenChange={(open) => { if (!open) setRosterTeamId(""); }} onEditPurchase={onEditPurchase} onUndoPurchase={onUndoPurchase} />
 
     <Dialog open={Boolean(quickPlayerId)} onOpenChange={(open) => { if (!open) closeQuickAssign(); }}>
       <DialogContent className="max-w-lg p-4 sm:p-6">
