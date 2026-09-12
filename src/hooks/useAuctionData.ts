@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AppSnapshot, AuctionState, FantasyTeam, ObservedBid, Player, Purchase, SerieAClub } from "@/types";
+import type { AppSnapshot, AuctionState, FantasyTeam, ObservedBid, PendingPriceUpdate, Player, Purchase, SerieAClub } from "@/types";
 import {
   addObservedBid,
   addPurchase as persistPurchase,
@@ -16,6 +16,7 @@ import {
   savePlayer,
   savePlayers,
   saveTeam,
+  updatePurchasesAndPlayers,
 } from "@/lib/db";
 
 export function useAuctionData() {
@@ -69,6 +70,41 @@ export function useAuctionData() {
       ...current,
       purchases: [...current.purchases, ...purchases],
       players: current.players.map((player) => updated.get(player.id) ?? player),
+    } : current);
+  };
+  const finalizePendingPrices = async (updates: PendingPriceUpdate[]) => {
+    if (!data || !updates.length) return;
+    const changedPurchases = new Map<string, Purchase>();
+    const changedPlayers = new Map<string, Player>();
+
+    for (const update of updates) {
+      const primary = data.purchases.find((purchase) => purchase.id === update.purchaseId);
+      if (!primary || !primary.pricePending) continue;
+      const group = primary.bundleId
+        ? data.purchases.filter((purchase) => purchase.bundleId === primary.bundleId)
+        : [primary];
+      const sorted = [...group].sort((a, b) => a.timestamp - b.timestamp);
+      sorted.forEach((purchase, index) => {
+        const nextPurchase: Purchase = {
+          ...purchase,
+          price: index === 0 ? update.amount : 0,
+          budgetImpact: index === 0 ? update.amount : 0,
+          pricePending: false,
+        };
+        changedPurchases.set(nextPurchase.id, nextPurchase);
+        const player = data.players.find((item) => item.id === purchase.playerId);
+        if (player) changedPlayers.set(player.id, { ...player, purchasePrice: index === 0 ? update.amount : 0 });
+      });
+    }
+
+    const purchases = [...changedPurchases.values()];
+    const players = [...changedPlayers.values()];
+    if (!purchases.length) return;
+    await updatePurchasesAndPlayers(purchases, players);
+    setData((current) => current ? {
+      ...current,
+      purchases: current.purchases.map((purchase) => changedPurchases.get(purchase.id) ?? purchase),
+      players: current.players.map((player) => changedPlayers.get(player.id) ?? player),
     } : current);
   };
   const addBid = async (bid: ObservedBid) => {
@@ -127,6 +163,7 @@ export function useAuctionData() {
     replaceCatalog,
     addPurchase,
     addPurchaseBundle,
+    finalizePendingPrices,
     addBid,
     removeBid,
     undoPurchase,
