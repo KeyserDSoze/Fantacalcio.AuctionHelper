@@ -49,6 +49,8 @@ export interface Purchase {
   price: number;
   /** Crediti realmente sottratti. Nei pacchetti portieri vale il prezzo sul primo record e 0 sugli altri. */
   budgetImpact?: number;
+  /** Acquisto già assegnato ma prezzo ancora da inserire. Finché true non influenza budget e statistiche di prezzo. */
+  pricePending?: boolean;
   bundleId?: string;
   bundleLabel?: string;
   role: Role;
@@ -88,6 +90,11 @@ export interface AppSnapshot {
   purchases: Purchase[];
   bids: ObservedBid[];
   auction: AuctionState;
+}
+
+export interface PendingPriceUpdate {
+  purchaseId: string;
+  amount: number;
 }
 
 export const ROLE_LIMITS: Record<Role, number> = { P: 3, D: 8, C: 8, A: 6 };
