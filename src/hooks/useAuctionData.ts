@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AppSnapshot, AuctionState, FantasyTeam, ObservedBid, PendingPriceUpdate, Player, Purchase, SerieAClub } from "@/types";
+import { ROLE_LIMITS } from "@/types";
 import {
   addObservedBid,
   addPurchase as persistPurchase,
@@ -161,6 +162,96 @@ export function useAuctionData() {
       players: current.players.map((item) => changedPlayers.get(item.id) ?? item),
     } : current);
   };
+  const quickAddPurchase = async (teamId: string, playerId: string, amount: number | null) => {
+    if (!data) return;
+    const player = data.players.find((item) => item.id === playerId && item.status === "AVAILABLE");
+    const team = data.teams.find((item) => item.id === teamId);
+    if (!player || !team) return;
+
+    const packageMode = player.role === "P" && data.auction.goalkeeperMode === "PACKAGE";
+    const groupPlayers = packageMode
+      ? data.players
+          .filter((item) => item.status === "AVAILABLE" && item.role === "P" && item.club === player.club)
+          .sort((a, b) => b.basePrice - a.basePrice)
+          .slice(0, 3)
+      : [player];
+    if (packageMode && groupPlayers.length < 2) return;
+
+    const currentRoleCount = data.purchases.filter((purchase) => purchase.fantasyTeamId === teamId && purchase.role === player.role).length;
+    if (currentRoleCount + groupPlayers.length > ROLE_LIMITS[player.role]) return;
+
+    const minimum = packageMode ? (groupPlayers[0]?.basePrice ?? player.basePrice) : player.basePrice;
+    if (amount !== null && (!Number.isFinite(amount) || amount < minimum)) return;
+
+    const liveRole = player.role === data.auction.currentRole;
+    const choiceNumber = liveRole ? data.auction.choiceNumber : 1;
+    const subRound = liveRole ? data.auction.subRound : 1;
+    const now = Date.now();
+    let newPurchases: Purchase[] = [];
+    let updatedPlayers: Player[] = [];
+
+    if (packageMode) {
+      const bundleId = `gk-${now}-${teamId}-${player.club}`;
+      const bundleLabel = `Pacchetto ${player.club}`;
+      newPurchases = groupPlayers.map((item, index) => ({
+        id: `${bundleId}-${item.id}`,
+        playerId: item.id,
+        fantasyTeamId: teamId,
+        price: index === 0 ? (amount ?? 0) : 0,
+        budgetImpact: index === 0 ? (amount ?? 0) : 0,
+        pricePending: index === 0 ? amount === null : false,
+        bundleId,
+        bundleLabel,
+        role: "P",
+        choiceNumber,
+        subRound,
+        timestamp: now + index,
+      }));
+      updatedPlayers = groupPlayers.map((item, index) => ({
+        ...item,
+        status: "WON" as const,
+        ownerId: teamId,
+        purchasePrice: amount === null ? undefined : (index === 0 ? amount : 0),
+      }));
+      await persistPurchaseBundle(newPurchases, updatedPlayers);
+    } else {
+      const purchase: Purchase = {
+        id: `${now}-${player.id}`,
+        playerId: player.id,
+        fantasyTeamId: teamId,
+        price: amount ?? 0,
+        budgetImpact: amount ?? 0,
+        pricePending: amount === null,
+        role: player.role,
+        choiceNumber,
+        subRound,
+        timestamp: now,
+      };
+      const updatedPlayer: Player = {
+        ...player,
+        status: "WON",
+        ownerId: teamId,
+        purchasePrice: amount === null ? undefined : amount,
+      };
+      newPurchases = [purchase];
+      updatedPlayers = [updatedPlayer];
+      await persistPurchase(purchase, updatedPlayer);
+    }
+
+    let nextAuction = data.auction;
+    if (liveRole && !data.auction.resolvedTeamIds.includes(teamId)) {
+      nextAuction = { ...data.auction, resolvedTeamIds: [...data.auction.resolvedTeamIds, teamId] };
+      await saveAuctionState(nextAuction);
+    }
+
+    const updated = new Map(updatedPlayers.map((item) => [item.id, item]));
+    setData((current) => current ? {
+      ...current,
+      auction: nextAuction,
+      purchases: [...current.purchases, ...newPurchases],
+      players: current.players.map((item) => updated.get(item.id) ?? item),
+    } : current);
+  };
   const addBid = async (bid: ObservedBid) => {
     await addObservedBid(bid);
     setData((current) => current ? { ...current, bids: [...current.bids, bid] } : current);
@@ -219,6 +310,7 @@ export function useAuctionData() {
     addPurchaseBundle,
     finalizePendingPrices,
     editPurchase,
+    quickAddPurchase,
     addBid,
     removeBid,
     undoPurchase,

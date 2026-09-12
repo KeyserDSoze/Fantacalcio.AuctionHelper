@@ -41,6 +41,7 @@ export function AuctionPage({
   onOpenPrices,
   onEditPurchase,
   onUndoPurchase,
+  onQuickAdd,
 }: {
   data: AppSnapshot;
   onAuction: (a: AuctionState) => Promise<void>;
@@ -50,6 +51,7 @@ export function AuctionPage({
   onOpenPrices: () => void;
   onEditPurchase: (purchase: Purchase, nextTeamId: string, amount: number | null) => Promise<void>;
   onUndoPurchase: (purchase: Purchase) => Promise<void>;
+  onQuickAdd: (teamId: string, playerId: string, amount: number | null) => Promise<void>;
 }) {
   const [candidateSource, setCandidateSource] = useState<CandidateSource>("MY_LIST");
   const [teamId, setTeamId] = useState("soze-heaven");
@@ -355,7 +357,7 @@ export function AuctionPage({
       </div>
     </div>
 
-    <RosterModal data={data} teamId={rosterTeamId} onOpenChange={(open) => { if (!open) setRosterTeamId(""); }} onEditPurchase={onEditPurchase} onUndoPurchase={onUndoPurchase} />
+    <RosterModal data={data} teamId={rosterTeamId} onOpenChange={(open) => { if (!open) setRosterTeamId(""); }} onTeamChange={setRosterTeamId} onEditPurchase={onEditPurchase} onUndoPurchase={onUndoPurchase} onQuickAdd={onQuickAdd} />
 
     <Dialog open={Boolean(quickPlayerId)} onOpenChange={(open) => { if (!open) closeQuickAssign(); }}>
       <DialogContent className="max-w-lg p-4 sm:p-6">
