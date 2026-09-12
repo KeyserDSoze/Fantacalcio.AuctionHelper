@@ -80,7 +80,9 @@ export async function getDb() {
     for (const player of defaults.players) await tx.objectStore("players").put(player);
     for (const club of autoTieredClubs) {
       const existing = existingClubMap.get(club.id);
-      await tx.objectStore("clubs").put(existing?.tier != null ? { ...club, tier: existing.tier } : club);
+      const legacyManual = existing?.tierSource === undefined && existing?.tier != null;
+      const manual = existing?.tierSource === "MANUAL" || legacyManual;
+      await tx.objectStore("clubs").put(manual ? { ...club, tier: existing?.tier ?? club.tier, tierSource: "MANUAL" } : club);
     }
     await tx.done;
   }
@@ -101,7 +103,7 @@ export async function loadAll() {
   ]);
 
   const clubs = fillMissingClubTiers(players, rawClubs);
-  const changedClubs = clubs.filter((club, index) => club.tier !== rawClubs[index]?.tier);
+  const changedClubs = clubs.filter((club, index) => club.tier !== rawClubs[index]?.tier || club.tierSource !== rawClubs[index]?.tierSource);
   if (changedClubs.length) {
     const tx = db.transaction("clubs", "readwrite");
     for (const club of changedClubs) await tx.store.put(club);
