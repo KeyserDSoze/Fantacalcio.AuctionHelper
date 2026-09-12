@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import type { AppSnapshot, Player, Role } from "@/types";
 import { ROLE_LABELS, ROLE_LIMITS } from "@/types";
 import { parseFantamasterFile } from "@/lib/excel";
+import { MAX_GOALKEEPERS_PER_PACKAGE, MIN_GOALKEEPERS_PER_PACKAGE } from "@/lib/strategy";
 
 export function PlayersPage({
   data,
@@ -50,8 +51,8 @@ export function PlayersPage({
         const byClub = new Map<string, Player[]>();
         available.forEach((player) => byClub.set(player.club, [...(byClub.get(player.club) ?? []), player]));
         const rankedPackages = [...byClub.entries()]
-          .map(([club, players]) => ({ club, players: [...players].sort((a, b) => b.basePrice - a.basePrice).slice(0, 3) }))
-          .filter((item) => item.players.length === 3)
+          .map(([club, players]) => ({ club, players: [...players].sort((a, b) => b.basePrice - a.basePrice).slice(0, MAX_GOALKEEPERS_PER_PACKAGE) }))
+          .filter((item) => item.players.length >= MIN_GOALKEEPERS_PER_PACKAGE)
           .sort((a, b) => b.players.reduce((sum, player) => sum + player.basePrice, 0) - a.players.reduce((sum, player) => sum + player.basePrice, 0));
         const topClubs = new Set(rankedPackages.slice(0, 9).map((item) => item.club));
         available.forEach((player) => changes.set(player.id, { ...player, targetChoice: topClubs.has(player.club) ? 1 : null }));
@@ -86,7 +87,7 @@ export function PlayersPage({
       </div>
     </div>
     {message && <div className="rounded-lg border border-primary/30 bg-primary/10 p-3 text-sm text-primary">{message}</div>}
-    <Card className="border-primary/20"><CardContent className="p-3 text-sm text-muted-foreground sm:p-4"><strong className="text-foreground">Auto scelte:</strong> ordina i liberi per quotazione. Posizioni 1–9 → 1ª scelta, 10–18 → 2ª, 19–27 → 3ª e così via. Ripremendolo durante l'asta la graduatoria si ricompatta automaticamente togliendo chi è già stato preso. In modalità pacchetto portieri assegna la 1ª scelta ai 9 pacchetti più costosi.</CardContent></Card>
+    <Card className="border-primary/20"><CardContent className="p-3 text-sm text-muted-foreground sm:p-4"><strong className="text-foreground">Auto scelte:</strong> ordina i liberi per quotazione. Posizioni 1–9 → 1ª scelta, 10–18 → 2ª, 19–27 → 3ª e così via. Ripremendolo durante l'asta la graduatoria si ricompatta automaticamente togliendo chi è già stato preso. In modalità pacchetto portieri assegna la 1ª scelta ai 9 pacchetti più costosi, considerando validi i club con almeno 2 portieri disponibili.</CardContent></Card>
     <Card><CardHeader><CardTitle>Catalogo · {filtered.length} giocatori</CardTitle></CardHeader><CardContent>
       <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_auto]"><div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Cerca nome o squadra…" value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} /></div><Select className="w-full sm:w-auto" value={role} onChange={(e) => { setRole(e.target.value as typeof role); setPage(0); }}><option value="ALL">Tutti i ruoli</option>{(["P","D","C","A"] as Role[]).map((r) => <option value={r} key={r}>{ROLE_LABELS[r]}</option>)}</Select></div>
 
