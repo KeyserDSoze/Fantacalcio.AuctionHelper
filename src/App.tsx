@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Eye, EyeOff, Loader2, LockKeyhole } from "lucide-react";
 import { Layout, type PageKey } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -95,6 +95,12 @@ function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
 function AuctionApp() {
   const [page, setPage] = useState<PageKey>("dashboard");
   const api = useAuctionData();
+
+  useEffect(() => {
+    const team = api.data?.teams.find((item) => item.id === "suenac-brezio" && item.name !== "Swenac & Brezio");
+    if (team) void api.updateTeam({ ...team, name: "Swenac & Brezio" });
+  }, [api.data?.teams]);
+
   if (api.loading || !api.data) return <div className="grid min-h-screen place-items-center"><div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Caricamento database locale…</div></div>;
   const data = api.data;
   return <Layout page={page} onPage={setPage}>
