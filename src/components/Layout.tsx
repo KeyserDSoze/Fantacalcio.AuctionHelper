@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BarChart3, Database, Gavel, Menu, Moon, Shield, Sun, Target, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,7 +14,7 @@ const items: { key: PageKey; label: string; icon: typeof BarChart3; group: strin
   { key: "data", label: "Dati & backup", icon: Database, group: "Sistema" },
 ];
 
-export function Layout({ page, onPage, children }: { page: PageKey; onPage: (p: PageKey) => void; children: React.ReactNode }) {
+export function Layout({ page, onPage, children }: { page: PageKey; onPage: (p: PageKey) => void; children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dark, setDark] = useState(() => localStorage.getItem("theme") !== "light");
   useEffect(() => {
