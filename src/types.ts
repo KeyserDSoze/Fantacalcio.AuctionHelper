@@ -31,6 +31,8 @@ export interface SerieAClub {
   id: string;
   name: string;
   tier: number | null;
+  /** AUTO viene ricalcolato dal valore Top 15; MANUAL non viene sovrascritto. */
+  tierSource?: "AUTO" | "MANUAL";
 }
 
 export interface FantasyTeam {
