@@ -14,6 +14,7 @@ import {
   saveAuctionState,
   saveClub,
   savePlayer,
+  savePlayers,
   saveTeam,
 } from "@/lib/db";
 
@@ -31,6 +32,11 @@ export function useAuctionData() {
   const updatePlayer = async (player: Player) => {
     await savePlayer(player);
     setData((current) => current ? { ...current, players: current.players.map((p) => p.id === player.id ? player : p) } : current);
+  };
+  const updatePlayers = async (players: Player[]) => {
+    await savePlayers(players);
+    const updated = new Map(players.map((player) => [player.id, player]));
+    setData((current) => current ? { ...current, players: current.players.map((player) => updated.get(player.id) ?? player) } : current);
   };
   const updateClub = async (club: SerieAClub) => {
     await saveClub(club);
@@ -114,6 +120,7 @@ export function useAuctionData() {
     loading,
     refresh,
     updatePlayer,
+    updatePlayers,
     updateClub,
     updateTeam,
     updateAuction,
