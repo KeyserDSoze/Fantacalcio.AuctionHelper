@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { RosterModal } from "@/components/RosterModal";
-import type { AppSnapshot, AuctionState, ObservedBid, Player, Purchase, Role } from "@/types";
+import type { AppSnapshot, AuctionState, FantasyTeam, ObservedBid, Player, Purchase, Role } from "@/types";
 import { ROLE_LABELS, ROLE_LIMITS } from "@/types";
 import { activeTeamsForState, getSozeCandidates, MIN_GOALKEEPERS_PER_PACKAGE, predictOpponentTargets, type CandidateSource } from "@/lib/strategy";
 import { observedBehavior, teamSnapshot } from "@/lib/analytics";
@@ -42,6 +42,7 @@ export function AuctionPage({
   onEditPurchase,
   onUndoPurchase,
   onQuickAdd,
+  onTeam,
 }: {
   data: AppSnapshot;
   onAuction: (a: AuctionState) => Promise<void>;
@@ -52,6 +53,7 @@ export function AuctionPage({
   onEditPurchase: (purchase: Purchase, nextTeamId: string, amount: number | null) => Promise<void>;
   onUndoPurchase: (purchase: Purchase) => Promise<void>;
   onQuickAdd: (teamId: string, playerId: string, amount: number | null) => Promise<void>;
+  onTeam: (team: FantasyTeam) => Promise<void>;
 }) {
   const [candidateSource, setCandidateSource] = useState<CandidateSource>("MY_LIST");
   const [teamId, setTeamId] = useState("soze-heaven");
@@ -357,7 +359,7 @@ export function AuctionPage({
       </div>
     </div>
 
-    <RosterModal data={data} teamId={rosterTeamId} onOpenChange={(open) => { if (!open) setRosterTeamId(""); }} onTeamChange={setRosterTeamId} onEditPurchase={onEditPurchase} onUndoPurchase={onUndoPurchase} onQuickAdd={onQuickAdd} />
+    <RosterModal data={data} teamId={rosterTeamId} onOpenChange={(open) => { if (!open) setRosterTeamId(""); }} onTeamChange={setRosterTeamId} onEditPurchase={onEditPurchase} onUndoPurchase={onUndoPurchase} onQuickAdd={onQuickAdd} onTeam={onTeam} />
 
     <Dialog open={Boolean(quickPlayerId)} onOpenChange={(open) => { if (!open) closeQuickAssign(); }}>
       <DialogContent className="max-w-lg p-4 sm:p-6">

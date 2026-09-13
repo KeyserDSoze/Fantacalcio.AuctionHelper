@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, Coins, Pencil, Plus, RotateCcw, Users, X } from "lucide-react";
+import { AlertTriangle, Check, Coins, Download, Pencil, Plus, RotateCcw, Users, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { purchaseBudgetImpact, teamSnapshot } from "@/lib/analytics";
-import type { AppSnapshot, Player, Purchase, Role } from "@/types";
+import { exportRosterPdf } from "@/lib/rosterPdf";
+import type { AppSnapshot, FantasyTeam, Player, Purchase, Role } from "@/types";
 import { ROLE_LABELS, ROLE_LIMITS } from "@/types";
 
 function groupForPurchase(purchase: Purchase, data: AppSnapshot) {
@@ -60,6 +61,7 @@ export function RosterModal({
   onEditPurchase,
   onUndoPurchase,
   onQuickAdd,
+  onTeam,
 }: {
   data: AppSnapshot;
   teamId: string;
@@ -68,6 +70,7 @@ export function RosterModal({
   onEditPurchase: (purchase: Purchase, nextTeamId: string, amount: number | null) => Promise<void>;
   onUndoPurchase: (purchase: Purchase) => Promise<void>;
   onQuickAdd: (teamId: string, playerId: string, amount: number | null) => Promise<void>;
+  onTeam: (team: FantasyTeam) => Promise<void>;
 }) {
   const [selectedPurchaseId, setSelectedPurchaseId] = useState("");
   const [editTeamId, setEditTeamId] = useState("");
@@ -77,6 +80,9 @@ export function RosterModal({
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [inlineError, setInlineError] = useState("");
   const [addDrafts, setAddDrafts] = useState<Record<Role, AddDraft>>(emptyDrafts);
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [renameError, setRenameError] = useState("");
   const team = data.teams.find((item) => item.id === teamId);
   const snapshot = team ? teamSnapshot(team, data.players, data.purchases) : null;
   const roster = useMemo(
@@ -90,6 +96,13 @@ export function RosterModal({
   const selectedCurrentCost = groupCost(selectedGroup);
   const selectedMinimum = selectedGroup.length ? minimumForGroup(selectedGroup, data) : selectedPlayer?.basePrice ?? 0;
   const isClosed = Boolean(data.auction.closedAt);
+
+  useEffect(() => {
+    if (!team) return;
+    setRenameDraft(team.name);
+    setRenameError("");
+    setRenaming(false);
+  }, [teamId, team?.name]);
 
   useEffect(() => {
     const next: Record<string, string> = {};
@@ -216,6 +229,16 @@ export function RosterModal({
     setSelectedPurchaseId("");
   };
 
+  const saveTeamName = async () => {
+    if (!team?.isMe) return;
+    const name = renameDraft.trim();
+    if (name.length < 2) return setRenameError("Il nome deve avere almeno 2 caratteri.");
+    if (name.length > 40) return setRenameError("Il nome può avere al massimo 40 caratteri.");
+    setRenameError("");
+    await onTeam({ ...team, name });
+    setRenaming(false);
+  };
+
   const releasePlayer = async () => {
     if (!selectedPrimary || isClosed) return;
     await onUndoPurchase(selectedPrimary);
@@ -228,8 +251,24 @@ export function RosterModal({
   return <>
     <Dialog open={Boolean(teamId)} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl p-3 sm:p-6">
-        <DialogTitle className="pr-10 text-xl font-black sm:text-2xl">{team.isMe ? "La mia rosa · Soze Heaven" : `Rosa · ${team.name}`}</DialogTitle>
-        <DialogDescription>Modalità rapida stile Excel: modifica il prezzo nella cella e premi Invio, usa × per togliere un giocatore, oppure compila la riga vuota per aggiungerlo.</DialogDescription>
+        <div className="flex flex-col gap-3 pr-10 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <DialogTitle className="text-xl font-black sm:text-2xl">{team.isMe ? `La mia rosa · ${team.name}` : `Rosa · ${team.name}`}</DialogTitle>
+            <DialogDescription className="mt-1">Modalità rapida stile Excel: modifica il prezzo nella cella e premi Invio, usa × per togliere un giocatore, oppure compila la riga vuota per aggiungerlo.</DialogDescription>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => exportRosterPdf(data, team)}><Download className="h-4 w-4" />Esporta PDF</Button>
+            {team.isMe && <Button variant="outline" size="sm" onClick={() => setRenaming((value) => !value)}><Pencil className="h-4 w-4" />Rinomina squadra</Button>}
+          </div>
+        </div>
+        {team.isMe && renaming && <div className="mt-3 rounded-xl border bg-muted/20 p-3">
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <Input value={renameDraft} maxLength={40} autoFocus onChange={(event) => { setRenameDraft(event.target.value); setRenameError(""); }} onKeyDown={(event) => { if (event.key === "Enter") void saveTeamName(); }} placeholder="Nome della mia squadra" />
+            <Button onClick={() => void saveTeamName()}><Check className="h-4 w-4" />Salva nome</Button>
+          </div>
+          {renameError && <div className="mt-2 text-xs text-red-500">{renameError}</div>}
+          <div className="mt-1 text-[11px] text-muted-foreground">Cambiare nome non modifica l'ID interno: rosa, storico e dati dell'asta restano collegati.</div>
+        </div>}
 
         <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Squadra

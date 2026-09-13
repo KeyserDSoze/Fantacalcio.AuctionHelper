@@ -105,7 +105,7 @@ function AuctionApp() {
   const data = api.data;
   return <Layout page={page} onPage={setPage}>
     {page === "dashboard" && <DashboardPage data={data} onUndoPurchase={api.undoPurchase} />}
-    {page === "auction" && <AuctionPage data={data} onAuction={api.updateAuction} onPurchase={api.addPurchase} onPurchaseBundle={api.addPurchaseBundle} onBid={api.addBid} onOpenPrices={() => setPage("prices")} onEditPurchase={api.editPurchase} onUndoPurchase={api.undoPurchase} onQuickAdd={api.quickAddPurchase} />}
+    {page === "auction" && <AuctionPage data={data} onAuction={api.updateAuction} onPurchase={api.addPurchase} onPurchaseBundle={api.addPurchaseBundle} onBid={api.addBid} onOpenPrices={() => setPage("prices")} onEditPurchase={api.editPurchase} onUndoPurchase={api.undoPurchase} onQuickAdd={api.quickAddPurchase} onTeam={api.updateTeam} />}
     {page === "prices" && <PendingPricesPage data={data} onSave={api.finalizePendingPrices} />}
     {page === "market" && <MarketPage data={data} onUndoPurchase={api.undoPurchase} onDeleteBid={api.removeBid} />}
     {page === "report" && <FinalReportPage data={data} onAuction={api.updateAuction} />}
