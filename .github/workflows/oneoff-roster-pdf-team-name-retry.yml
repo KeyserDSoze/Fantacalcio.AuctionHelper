@@ -1,0 +1,79 @@
+name: One-off roster PDF integration retry
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/oneoff-roster-pdf-team-name-retry.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Integrate roster PDF and rename
+        shell: python
+        run: |
+          from pathlib import Path
+
+          roster = Path('src/components/RosterModal.tsx')
+          text = roster.read_text()
+          text = text.replace('import { AlertTriangle, Check, Coins, Pencil, Plus, RotateCcw, Users, X } from "lucide-react";', 'import { AlertTriangle, Check, Coins, Download, Pencil, Plus, RotateCcw, Users, X } from "lucide-react";')
+          text = text.replace('import { purchaseBudgetImpact, teamSnapshot } from "@/lib/analytics";\nimport type { AppSnapshot, Player, Purchase, Role } from "@/types";', 'import { purchaseBudgetImpact, teamSnapshot } from "@/lib/analytics";\nimport { exportRosterPdf } from "@/lib/rosterPdf";\nimport type { AppSnapshot, FantasyTeam, Player, Purchase, Role } from "@/types";')
+          text = text.replace('  onUndoPurchase,\n  onQuickAdd,\n}: {', '  onUndoPurchase,\n  onQuickAdd,\n  onTeam,\n}: {')
+          text = text.replace('  onQuickAdd: (teamId: string, playerId: string, amount: number | null) => Promise<void>;\n}) {', '  onQuickAdd: (teamId: string, playerId: string, amount: number | null) => Promise<void>;\n  onTeam: (team: FantasyTeam) => Promise<void>;\n}) {')
+          text = text.replace('  const [addDrafts, setAddDrafts] = useState<Record<Role, AddDraft>>(emptyDrafts);\n  const team = data.teams.find((item) => item.id === teamId);', '  const [addDrafts, setAddDrafts] = useState<Record<Role, AddDraft>>(emptyDrafts);\n  const [renaming, setRenaming] = useState(false);\n  const [renameDraft, setRenameDraft] = useState("");\n  const [renameError, setRenameError] = useState("");\n  const team = data.teams.find((item) => item.id === teamId);')
+
+          anchor = '''  useEffect(() => {\n    const next: Record<string, string> = {};'''
+          insert = '''  useEffect(() => {\n    if (!team) return;\n    setRenameDraft(team.name);\n    setRenameError("");\n    setRenaming(false);\n  }, [teamId, team?.name]);\n\n  useEffect(() => {\n    const next: Record<string, string> = {};'''
+          if anchor not in text: raise SystemExit('roster useEffect anchor missing')
+          text = text.replace(anchor, insert, 1)
+
+          anchor = '''  const releasePlayer = async () => {\n    if (!selectedPrimary || isClosed) return;'''
+          insert = '''  const saveTeamName = async () => {\n    if (!team?.isMe) return;\n    const name = renameDraft.trim();\n    if (name.length < 2) return setRenameError("Il nome deve avere almeno 2 caratteri.");\n    if (name.length > 40) return setRenameError("Il nome può avere al massimo 40 caratteri.");\n    setRenameError("");\n    await onTeam({ ...team, name });\n    setRenaming(false);\n  };\n\n  const releasePlayer = async () => {\n    if (!selectedPrimary || isClosed) return;'''
+          if anchor not in text: raise SystemExit('releasePlayer anchor missing')
+          text = text.replace(anchor, insert, 1)
+
+          old_header = '''        <DialogTitle className="pr-10 text-xl font-black sm:text-2xl">{team.isMe ? "La mia rosa · Soze Heaven" : `Rosa · ${team.name}`}</DialogTitle>\n        <DialogDescription>Modalità rapida stile Excel: modifica il prezzo nella cella e premi Invio, usa × per togliere un giocatore, oppure compila la riga vuota per aggiungerlo.</DialogDescription>\n\n        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">'''
+          new_header = '''        <div className="flex flex-col gap-3 pr-10 sm:flex-row sm:items-start sm:justify-between">\n          <div>\n            <DialogTitle className="text-xl font-black sm:text-2xl">{team.isMe ? `La mia rosa · ${team.name}` : `Rosa · ${team.name}`}</DialogTitle>\n            <DialogDescription className="mt-1">Modalità rapida stile Excel: modifica il prezzo nella cella e premi Invio, usa × per togliere un giocatore, oppure compila la riga vuota per aggiungerlo.</DialogDescription>\n          </div>\n          <div className="flex shrink-0 flex-wrap gap-2">\n            <Button variant="outline" size="sm" onClick={() => exportRosterPdf(data, team)}><Download className="h-4 w-4" />Esporta PDF</Button>\n            {team.isMe && <Button variant="outline" size="sm" onClick={() => setRenaming((value) => !value)}><Pencil className="h-4 w-4" />Rinomina squadra</Button>}\n          </div>\n        </div>\n        {team.isMe && renaming && <div className="mt-3 rounded-xl border bg-muted/20 p-3">\n          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">\n            <Input value={renameDraft} maxLength={40} autoFocus onChange={(event) => { setRenameDraft(event.target.value); setRenameError(""); }} onKeyDown={(event) => { if (event.key === "Enter") void saveTeamName(); }} placeholder="Nome della mia squadra" />\n            <Button onClick={() => void saveTeamName()}><Check className="h-4 w-4" />Salva nome</Button>\n          </div>\n          {renameError && <div className="mt-2 text-xs text-red-500">{renameError}</div>}\n          <div className="mt-1 text-[11px] text-muted-foreground">Cambiare nome non modifica l'ID interno: rosa, storico e dati dell'asta restano collegati.</div>\n        </div>}\n\n        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">'''
+          if old_header not in text: raise SystemExit('roster header block missing')
+          roster.write_text(text.replace(old_header, new_header, 1))
+
+          auction = Path('src/pages/AuctionPage.tsx')
+          text = auction.read_text()
+          text = text.replace('import type { AppSnapshot, AuctionState, ObservedBid, Player, Purchase, Role } from "@/types";', 'import type { AppSnapshot, AuctionState, FantasyTeam, ObservedBid, Player, Purchase, Role } from "@/types";')
+          text = text.replace('  onUndoPurchase,\n  onQuickAdd,\n}: {', '  onUndoPurchase,\n  onQuickAdd,\n  onTeam,\n}: {')
+          text = text.replace('  onQuickAdd: (teamId: string, playerId: string, amount: number | null) => Promise<void>;\n}) {', '  onQuickAdd: (teamId: string, playerId: string, amount: number | null) => Promise<void>;\n  onTeam: (team: FantasyTeam) => Promise<void>;\n}) {')
+          old = '<RosterModal data={data} teamId={rosterTeamId} onOpenChange={(open) => { if (!open) setRosterTeamId(""); }} onTeamChange={setRosterTeamId} onEditPurchase={onEditPurchase} onUndoPurchase={onUndoPurchase} onQuickAdd={onQuickAdd} />'
+          new = '<RosterModal data={data} teamId={rosterTeamId} onOpenChange={(open) => { if (!open) setRosterTeamId(""); }} onTeamChange={setRosterTeamId} onEditPurchase={onEditPurchase} onUndoPurchase={onUndoPurchase} onQuickAdd={onQuickAdd} onTeam={onTeam} />'
+          if old not in text: raise SystemExit('RosterModal invocation missing')
+          auction.write_text(text.replace(old, new, 1))
+
+          app = Path('src/App.tsx')
+          text = app.read_text()
+          old = 'onEditPurchase={api.editPurchase} onUndoPurchase={api.undoPurchase} onQuickAdd={api.quickAddPurchase} />}'
+          new = 'onEditPurchase={api.editPurchase} onUndoPurchase={api.undoPurchase} onQuickAdd={api.quickAddPurchase} onTeam={api.updateTeam} />}'
+          if old not in text: raise SystemExit('AuctionPage invocation missing')
+          app.write_text(text.replace(old, new, 1))
+
+      - name: Commit and push with retry
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/RosterModal.tsx src/pages/AuctionPage.tsx src/App.tsx
+          git commit -m "feat: export rosters to PDF and rename own team"
+          for attempt in 1 2 3 4 5; do
+            if git push; then exit 0; fi
+            echo "Push attempt $attempt failed, retrying..."
+            sleep 5
+          done
+          exit 1
