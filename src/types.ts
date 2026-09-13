@@ -66,7 +66,7 @@ export interface ObservedBid {
   playerId: string;
   fantasyTeamId: string;
   amount: number;
-  /** Quotazione di riferimento; nei pacchetti è la somma delle tre quotazioni. */
+  /** Quotazione di riferimento; nei pacchetti è la quotazione del portiere più alto. */
   referenceBasePrice?: number;
   result: "LOST" | "TIED";
   role: Role;
